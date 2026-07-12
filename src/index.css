@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@theme {
+  /* The "Partner" palette — deep warm dark, burgundies, ambers, blushes. */
+  --color-void: #0a0508;
+  --color-ember-950: #170a10;
+  --color-ember-900: #241019;
+  --color-ember-800: #3a1a28;
+  --color-burgundy: #6e1e3c;
+  --color-blush: #e8a4b8;
+  --color-blush-soft: #c98da0;
+  --color-amber-glow: #f0b46a;
+  --color-cream: #f5ece4;
+  --color-muted: #8a7580;
+
+  --font-serif: "Georgia", "Times New Roman", serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  background: var(--color-void);
+  color: var(--color-cream);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: pan-y;
+}
+
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Hide scrollbars everywhere — this app has no visible chrome. */
+::-webkit-scrollbar {
+  display: none;
+}
+* {
+  scrollbar-width: none;
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top, 12px);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 12px);
+}
