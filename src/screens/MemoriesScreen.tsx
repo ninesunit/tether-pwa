@@ -52,7 +52,7 @@ export default function MemoriesScreen() {
     if (!tether || !session) return;
     setUploading(true);
     haptic("light");
-    const path = `${tether.id}/${crypto.randomUUID()}-${file.name.replace(/[^\w.\-]/g, "_")}`;
+    const path = `${tether.id}/${crypto.randomUUID()}-${file.name.replace(/[^\w.-]/g, "_")}`;
     const { error } = await supabase.storage.from("memories").upload(path, file, {
       cacheControl: "31536000",
     });
