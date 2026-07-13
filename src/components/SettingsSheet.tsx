@@ -15,6 +15,8 @@ export default function SettingsSheet({
   const { profile, partnerProfile, updateName, signOut, untether } = useTether();
   const [name, setName] = useState(profile?.display_name ?? "");
   const [confirmUnlink, setConfirmUnlink] = useState(false);
+  const [unlinking, setUnlinking] = useState(false);
+  const [unlinkError, setUnlinkError] = useState<string | null>(null);
   const keyboardInset = useKeyboardInset();
 
   const saveName = async () => {
@@ -76,24 +78,35 @@ export default function SettingsSheet({
                 <Vibrate size={15} /> test haptics
               </button>
               <button
-                onClick={() => {
+                disabled={unlinking}
+                onClick={async () => {
                   haptic("light");
                   if (!confirmUnlink) {
                     setConfirmUnlink(true);
                     return;
                   }
-                  untether();
-                  onClose();
+                  setUnlinking(true);
+                  setUnlinkError(null);
+                  const err = await untether();
+                  setUnlinking(false);
+                  setConfirmUnlink(false);
+                  if (err) setUnlinkError(err);
+                  else onClose();
                 }}
-                className={`flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm transition-colors ${
+                className={`flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-sm transition-colors disabled:opacity-50 ${
                   confirmUnlink ? "bg-burgundy text-cream" : "bg-ember-900/70 text-blush-soft"
                 }`}
               >
                 <Unlink size={15} />
-                {confirmUnlink
-                  ? "tap again — this deletes everything you share"
-                  : "untether"}
+                {unlinking
+                  ? "untethering…"
+                  : confirmUnlink
+                    ? "tap again — this deletes everything you share"
+                    : "untether"}
               </button>
+              {unlinkError && (
+                <p className="px-1 text-center text-xs text-blush">{unlinkError}</p>
+              )}
               <button
                 onClick={() => signOut()}
                 className="flex w-full items-center justify-center gap-2 rounded-2xl bg-ember-900/70 py-3.5 text-sm text-muted"

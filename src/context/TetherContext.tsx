@@ -83,7 +83,8 @@ interface TetherContextValue {
   updateName: (name: string) => Promise<void>;
   createTether: () => Promise<string | null>;
   joinTether: (code: string) => Promise<string | null>;
-  untether: () => Promise<void>;
+  /** Resolves with an error message when unlinking failed, else null. */
+  untether: () => Promise<string | null>;
   refreshTether: () => Promise<void>;
 }
 
@@ -652,13 +653,32 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     [userId, refreshTether],
   );
 
-  const untether = useCallback(async () => {
-    await supabase.rpc("untether");
+  const untether = useCallback(async (): Promise<string | null> => {
+    if (!userId) return "Not signed in.";
+    // Primary: the untether() RPC. Fallback: direct delete under the
+    // "members delete tether" policy. Then VERIFY — the old silent
+    // failure was an RPC that didn't exist in the database.
+    const { error: rpcErr } = await supabase.rpc("untether");
+    if (rpcErr) {
+      await supabase
+        .from("tethers")
+        .delete()
+        .or(`partner_a.eq.${userId},partner_b.eq.${userId}`);
+    }
+    const { data: remaining } = await supabase
+      .from("tethers")
+      .select("id")
+      .or(`partner_a.eq.${userId},partner_b.eq.${userId}`)
+      .limit(1);
+    if (remaining?.length) {
+      return "couldn't untether — run supabase/reset-and-repair.sql in the SQL editor, then try again.";
+    }
     setTether(null);
     setSpace(null);
     setPartnerProfile(null);
     await refreshTether();
-  }, [refreshTether]);
+    return null;
+  }, [userId, refreshTether]);
 
   const ambience: Ambience = partnerNear ? "near" : partnerOnline ? "present" : "dormant";
 
