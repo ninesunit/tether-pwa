@@ -25,6 +25,16 @@ body,
   overscroll-behavior: none;
 }
 
+/* iOS standalone: 100% can lag the real viewport during chrome/keyboard
+   transitions — prefer dynamic viewport units where supported. */
+@supports (height: 100dvh) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+  }
+}
+
 body {
   background: var(--color-void);
   color: var(--color-cream);

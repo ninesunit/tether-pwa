@@ -4,6 +4,7 @@ import { Heart, ImagePlus, Trash2 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { useTether } from "../context/TetherContext";
 import { haptic } from "../lib/haptics";
+import { useKeyboardInset } from "../lib/useKeyboardInset";
 import Fab from "../components/Fab";
 import type { Memory } from "../lib/types";
 
@@ -24,6 +25,7 @@ export default function MemoriesScreen() {
   const [caption, setCaption] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const keyboardInset = useKeyboardInset();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -234,6 +236,7 @@ export default function MemoriesScreen() {
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
             className="glass-strong fixed inset-x-0 bottom-0 z-40 rounded-t-[2rem] p-6 pb-10 safe-bottom"
+            style={keyboardInset > 0 ? { bottom: keyboardInset } : undefined}
           >
             <div className="mx-auto w-40 rotate-2 bg-[#faf6f0] p-1.5 pb-6 shadow-xl">
               <img src={pending.preview} alt="" className="polaroid-photo aspect-square w-full object-cover" />

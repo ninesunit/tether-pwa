@@ -5,6 +5,16 @@ import { VitePWA } from "vite-plugin-pwa";
 
 // https://vite.dev/config/
 export default defineConfig({
+  server: {
+    proxy: {
+      // Mirrors the Vercel /api/search function during local dev.
+      "/api/search": {
+        target: "https://itunes.apple.com",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/search/, "/search"),
+      },
+    },
+  },
   plugins: [
     react(),
     tailwindcss(),

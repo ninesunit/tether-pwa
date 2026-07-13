@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Armchair } from "lucide-react";
+import { Armchair, Compass, MapPin } from "lucide-react";
 import { useTether } from "../context/TetherContext";
 import { MOODS } from "../lib/types";
 import { startAmbience, stopAmbience } from "../lib/ambience";
@@ -25,6 +25,11 @@ export default function PulseScreen() {
     together,
     bothTogether,
     setTogether,
+    myLocation,
+    partnerLocation,
+    requestLocation,
+    compassNeeded,
+    requestCompass,
   } = useTether();
   const [ripples, setRipples] = useState<number[]>([]);
   const [sentAt, setSentAt] = useState<number | null>(null);
@@ -119,6 +124,31 @@ export default function PulseScreen() {
             </motion.p>
           )}
         </AnimatePresence>
+
+        {/* line setup — one chip at a time, in normal flow so it's tappable */}
+        {!myLocation ? (
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={requestLocation}
+            className="glass mx-auto flex items-center gap-1.5 rounded-full px-4 py-2 text-xs text-blush-soft"
+          >
+            <MapPin size={12} />
+            share location to aim the line
+          </motion.button>
+        ) : !partnerLocation ? (
+          <p className="glass mx-auto w-fit rounded-full px-4 py-2 text-xs text-muted">
+            waiting for {partnerName.toLowerCase()}'s location…
+          </p>
+        ) : compassNeeded ? (
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={requestCompass}
+            className="glass mx-auto flex items-center gap-1.5 rounded-full px-4 py-2 text-xs text-blush-soft"
+          >
+            <Compass size={12} />
+            point the line at {partnerName.toLowerCase()}
+          </motion.button>
+        ) : null}
 
         <div>
           <p className="eyebrow text-center">

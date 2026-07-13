@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabaseClient";
 import { useTether } from "../context/TetherContext";
 import { haptic } from "../lib/haptics";
 import { sfx } from "../lib/sfx";
+import { useKeyboardInset } from "../lib/useKeyboardInset";
 import type { Message } from "../lib/types";
 
 function dayLabel(iso: string) {
@@ -29,6 +30,7 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const keyboardInset = useKeyboardInset();
   const me = session?.user.id;
 
   const load = useCallback(async () => {
@@ -60,8 +62,14 @@ export default function ChatScreen() {
         },
       )
       .subscribe();
+    // refetch when the PWA returns to the foreground (iOS drops sockets)
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       supabase.removeChannel(ch);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [tether, load, me]);
 
@@ -148,8 +156,11 @@ export default function ChatScreen() {
         <div ref={bottomRef} />
       </div>
 
-      {/* composer — floats above the nav */}
-      <div className="above-nav fixed inset-x-0 z-30 px-5">
+      {/* composer — floats above the nav; lifts above the iOS keyboard */}
+      <div
+        className="above-nav fixed inset-x-0 z-30 px-5"
+        style={keyboardInset > 0 ? { bottom: keyboardInset + 8 } : undefined}
+      >
         <div className="glass-strong flex items-end gap-2 rounded-[1.75rem] p-2 pl-5">
           <textarea
             rows={1}

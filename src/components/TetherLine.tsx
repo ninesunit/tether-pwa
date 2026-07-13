@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Compass, MapPin } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useTether } from "../context/TetherContext";
 import { haptic } from "../lib/haptics";
 import { sfx } from "../lib/sfx";
@@ -11,8 +10,8 @@ import { sfx } from "../lib/sfx";
  * partner grabs it (synced live over Broadcast), and wobble back when
  * released — with a heavy haptic snap on the other phone.
  *
- * Rendering is a plain SVG path updated from a requestAnimationFrame
- * physics loop (no motion-value SVG attributes — those proved unreliable).
+ * Compass heading and all permission flows live in TetherContext; the
+ * status chips are rendered by the pulse screen in normal layout flow.
  */
 
 const SEND_INTERVAL_MS = 66;
@@ -40,17 +39,11 @@ function distanceText(a: { lat: number; lng: number }, b: { lat: number; lng: nu
   return `${Math.round(m / 1000)} km`;
 }
 
-type OrientationCtor = typeof DeviceOrientationEvent & {
-  requestPermission?: () => Promise<"granted" | "denied">;
-};
-
 export default function TetherLine() {
-  const { broadcast, onBroadcast, myLocation, partnerLocation, partnerProfile, requestLocation } =
+  const { broadcast, onBroadcast, myLocation, partnerLocation, partnerProfile, heading } =
     useTether();
 
   const [vp, setVp] = useState({ w: window.innerWidth, h: window.innerHeight });
-  const [heading, setHeading] = useState<number | null>(null);
-  const [needsPermission, setNeedsPermission] = useState(false);
   const [, setFrame] = useState(0); // ticks every physics frame
 
   // physics state lives in refs — mutated at 60fps, rendered via setFrame
@@ -70,43 +63,6 @@ export default function TetherLine() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  /* ---------------------------------------------------------- compass */
-  const attachOrientation = useCallback(() => {
-    const handler = (e: DeviceOrientationEvent) => {
-      const webkitHeading = (e as DeviceOrientationEvent & { webkitCompassHeading?: number })
-        .webkitCompassHeading;
-      if (webkitHeading != null) setHeading(webkitHeading);
-      else if (e.absolute && e.alpha != null) setHeading(360 - e.alpha);
-    };
-    window.addEventListener("deviceorientation", handler, true);
-    return () => window.removeEventListener("deviceorientation", handler, true);
-  }, []);
-
-  useEffect(() => {
-    const Ctor = (window.DeviceOrientationEvent ?? null) as OrientationCtor | null;
-    if (!Ctor) return;
-    if (typeof Ctor.requestPermission === "function") {
-      // iOS 13+: the compass must be unlocked by an explicit user tap.
-      setNeedsPermission(true);
-      return;
-    }
-    return attachOrientation();
-  }, [attachOrientation]);
-
-  const requestCompass = useCallback(async () => {
-    haptic("light");
-    const Ctor = window.DeviceOrientationEvent as OrientationCtor;
-    try {
-      const res = await Ctor.requestPermission!();
-      if (res === "granted") {
-        setNeedsPermission(false);
-        attachOrientation();
-      }
-    } catch {
-      /* user dismissed the native prompt */
-    }
-  }, [attachOrientation]);
-
   /* -------------------------------------------------- geometry (render) */
   const hasFix = !!myLocation && !!partnerLocation;
   const bearing = hasFix ? bearingDeg(myLocation!, partnerLocation!) : null;
@@ -125,6 +81,8 @@ export default function TetherLine() {
   // the bead marks where the string leaves toward the partner
   const beadDist = Math.min(vp.w, vp.h) / 2 - 64;
   const bead = { x: C.x + dir.x * beadDist, y: C.y + dir.y * beadDist };
+  // keep the bead label clear of the core at the center
+  const beadFarFromCore = beadDist > 150;
 
   /* ------------------------------------------------------ physics loop */
   useEffect(() => {
@@ -272,50 +230,18 @@ export default function TetherLine() {
       </svg>
 
       {/* bead label: who's at the end of the string, and how far */}
-      {hasFix && (
+      {hasFix && beadFarFromCore && (
         <div
           className="absolute -translate-x-1/2 -translate-y-1/2 text-center"
           style={{
             left: Math.min(vp.w - 70, Math.max(70, bead.x)),
-            top: Math.min(vp.h - 120, Math.max(90, bead.y + 26)),
+            top: Math.min(vp.h - 140, Math.max(90, bead.y + 26)),
           }}
         >
           <p className="text-[11px] text-blush-soft">{partnerName.toLowerCase()}</p>
           <p className="text-[10px] text-muted">{distanceText(myLocation!, partnerLocation!)}</p>
         </div>
       )}
-
-      {/* one status chip at a time, tucked under the core:
-          location → partner's location → compass unlock (iOS) */}
-      <div
-        className="absolute left-1/2 -translate-x-1/2"
-        style={{ top: "calc(50% + 118px)" }}
-      >
-        {!myLocation ? (
-          <button
-            onClick={() => {
-              haptic("light");
-              requestLocation();
-            }}
-            className="glass pointer-events-auto flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11px] text-blush-soft"
-          >
-            <MapPin size={11} />
-            share location to aim the line
-          </button>
-        ) : !partnerLocation ? (
-          <p className="glass rounded-full px-3.5 py-1.5 text-[11px] text-muted">
-            waiting for {partnerName.toLowerCase()}'s location…
-          </p>
-        ) : needsPermission ? (
-          <button
-            onClick={requestCompass}
-            className="glass pointer-events-auto flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11px] text-blush-soft"
-          >
-            <Compass size={11} />
-            point the line at {partnerName.toLowerCase()}
-          </button>
-        ) : null}
-      </div>
     </div>
   );
 }

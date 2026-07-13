@@ -12,7 +12,7 @@ import {
 import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { haptic } from "../lib/haptics";
-import { sfx } from "../lib/sfx";
+import { sfx, unlockAudio } from "../lib/sfx";
 import type {
   LastLocation,
   PresencePayload,
@@ -72,6 +72,11 @@ interface TetherContextValue {
   partnerLocation: { lat: number; lng: number } | null;
   /** Ask for (or retry) the geolocation permission from a user gesture. */
   requestLocation: () => void;
+  /** Device compass heading in degrees (0 = north), when available. */
+  heading: number | null;
+  /** iOS still needs an explicit tap to unlock the compass. */
+  compassNeeded: boolean;
+  requestCompass: () => void;
   signUp: (email: string, password: string, name: string) => Promise<string | null>;
   signIn: (email: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
@@ -97,6 +102,10 @@ function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng:
 }
 
 const NEARBY_METERS = 250;
+
+type OrientationCtor = typeof DeviceOrientationEvent & {
+  requestPermission?: () => Promise<"granted" | "denied">;
+};
 
 /** 2 heat per hour since the last interaction — mirrors add_heat() in SQL. */
 function decayedHeat(core: TetherCore | null): number {
@@ -129,6 +138,19 @@ export function TetherProvider({ children }: { children: ReactNode }) {
   const trackRef = useRef<(() => void) | null>(null);
   const lastLocationUpsertRef = useRef(0);
   const [locationNonce, setLocationNonce] = useState(0);
+  // Location is opt-in (one tap on the line's chip) and remembered, so iOS
+  // never gets an unsolicited permission prompt on every foreground.
+  const [locationEnabled, setLocationEnabled] = useState(
+    () => typeof localStorage !== "undefined" && !!localStorage.getItem("tether-location"),
+  );
+  const [heading, setHeading] = useState<number | null>(null);
+  const [compassNeeded, setCompassNeeded] = useState(false);
+  const orientationAttachedRef = useRef(false);
+
+  /** Stable key for realtime subscriptions — refreshTether() recreates the
+      tether OBJECT on every foreground, which previously tore down and
+      re-created every channel (and re-prompted iOS for location). */
+  const pairedTetherId = tether?.partner_b ? tether.id : null;
   const listenersRef = useRef(new Map<string, Set<(p: Record<string, unknown>) => void>>());
 
   const emit = useCallback((event: string, payload: Record<string, unknown>) => {
@@ -225,13 +247,15 @@ export function TetherProvider({ children }: { children: ReactNode }) {
   }, [partnerId]);
 
   /* ------------------- watch the tether row: pairing + partner untethers */
+  const tetherId = tether?.id ?? null;
+  const tetherPending = !!tether && !tether.partner_b;
   useEffect(() => {
-    if (!tether || !userId) return;
+    if (!tetherId || !userId) return;
     const ch = supabase
-      .channel(`tether-row:${tether.id}`)
+      .channel(`tether-row:${tetherId}`)
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "tethers", filter: `id=eq.${tether.id}` },
+        { event: "UPDATE", schema: "public", table: "tethers", filter: `id=eq.${tetherId}` },
         (payload) => {
           setTether(payload.new as Tether);
           haptic("success");
@@ -239,7 +263,7 @@ export function TetherProvider({ children }: { children: ReactNode }) {
       )
       .on(
         "postgres_changes",
-        { event: "DELETE", schema: "public", table: "tethers", filter: `id=eq.${tether.id}` },
+        { event: "DELETE", schema: "public", table: "tethers", filter: `id=eq.${tetherId}` },
         () => {
           setTether(null);
           setSpace(null);
@@ -251,32 +275,37 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     // Belt & suspenders while waiting for a partner: realtime can drop on
     // mobile Safari, so poll gently until the pair completes.
     let poll: number | null = null;
-    if (!tether.partner_b) {
+    if (tetherPending) {
       poll = window.setInterval(refreshTether, 10_000);
     }
     return () => {
       supabase.removeChannel(ch);
       if (poll !== null) clearInterval(poll);
     };
-  }, [tether, userId, refreshTether]);
+  }, [tetherId, tetherPending, userId, refreshTether]);
 
   /* ----------------------------------------------- shared space (mood) */
   useEffect(() => {
-    if (!tether?.partner_b) {
+    if (!pairedTetherId) {
       setSpace(null);
       return;
     }
     supabase
       .from("space_state")
       .select("*")
-      .eq("tether_id", tether.id)
+      .eq("tether_id", pairedTetherId)
       .maybeSingle()
       .then(({ data }) => setSpace((data as SpaceState) ?? null));
     const ch = supabase
-      .channel(`space:${tether.id}`)
+      .channel(`space:${pairedTetherId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "space_state", filter: `tether_id=eq.${tether.id}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "space_state",
+          filter: `tether_id=eq.${pairedTetherId}`,
+        },
         (payload) => {
           if (payload.eventType !== "DELETE") setSpace(payload.new as SpaceState);
         },
@@ -285,11 +314,11 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [tether]);
+  }, [pairedTetherId]);
 
   /* --------------------- resonance core heat + partner's last location */
   useEffect(() => {
-    if (!tether?.partner_b || !partnerId) {
+    if (!pairedTetherId || !partnerId) {
       setCore(null);
       setPartnerLocation(null);
       return;
@@ -297,7 +326,7 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     supabase
       .from("tether_core")
       .select("*")
-      .eq("tether_id", tether.id)
+      .eq("tether_id", pairedTetherId)
       .maybeSingle()
       .then(({ data }) => setCore((data as TetherCore) ?? null));
     supabase
@@ -310,10 +339,15 @@ export function TetherProvider({ children }: { children: ReactNode }) {
         setPartnerLocation(l ? { lat: l.lat, lng: l.lng } : null);
       });
     const ch = supabase
-      .channel(`core:${tether.id}`)
+      .channel(`core:${pairedTetherId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "tether_core", filter: `tether_id=eq.${tether.id}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "tether_core",
+          filter: `tether_id=eq.${pairedTetherId}`,
+        },
         (payload) => {
           if (payload.eventType !== "DELETE") setCore(payload.new as TetherCore);
         },
@@ -332,13 +366,13 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [tether, partnerId]);
+  }, [pairedTetherId, partnerId]);
 
   /* --------------------------------------- presence + pulse (broadcast) */
   useEffect(() => {
-    if (!tether?.partner_b || !userId) return;
+    if (!pairedTetherId || !userId) return;
 
-    const channel = supabase.channel(`tether:${tether.id}`, {
+    const channel = supabase.channel(`tether:${pairedTetherId}`, {
       config: { presence: { key: userId }, broadcast: { self: false } },
     });
     channelRef.current = channel;
@@ -404,14 +438,14 @@ export function TetherProvider({ children }: { children: ReactNode }) {
       setPartnerNear(false);
       setPartnerTogether(false);
     };
-  }, [tether, userId, emit]);
+  }, [pairedTetherId, userId, emit]);
 
   /* ------------------------------------------------- device geolocation
      Its own effect so a "share location" tap (locationNonce bump) can
      restart the watch after an earlier denial or a missed iOS prompt. */
   useEffect(() => {
-    if (!tether?.partner_b || !userId || !("geolocation" in navigator)) return;
-    const tetherId = tether.id;
+    if (!pairedTetherId || !userId || !locationEnabled || !("geolocation" in navigator)) return;
+    const tetherId = pairedTetherId;
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
@@ -439,10 +473,17 @@ export function TetherProvider({ children }: { children: ReactNode }) {
       { enableHighAccuracy: false, maximumAge: 60_000 },
     );
     return () => navigator.geolocation.clearWatch(watchId);
-  }, [tether, userId, locationNonce]);
+  }, [pairedTetherId, userId, locationEnabled, locationNonce]);
 
   const requestLocation = useCallback(() => {
-    // Fired inside a tap so iOS shows its native prompt, then restart the watch.
+    // Fired inside a tap so iOS shows its native prompt; remembered so the
+    // watch restarts automatically on future launches.
+    try {
+      localStorage.setItem("tether-location", "1");
+    } catch {
+      /* private mode */
+    }
+    setLocationEnabled(true);
     navigator.geolocation?.getCurrentPosition(
       () => setLocationNonce((n) => n + 1),
       () => {},
@@ -450,6 +491,65 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     );
     setLocationNonce((n) => n + 1);
   }, []);
+
+  /* ----------------------------------------------------------- compass */
+  const attachOrientation = useCallback(() => {
+    if (orientationAttachedRef.current) return;
+    orientationAttachedRef.current = true;
+    const handler = (e: DeviceOrientationEvent) => {
+      const webkitHeading = (e as DeviceOrientationEvent & { webkitCompassHeading?: number })
+        .webkitCompassHeading;
+      if (webkitHeading != null) setHeading(webkitHeading);
+      else if (e.absolute && e.alpha != null) setHeading(360 - e.alpha);
+    };
+    window.addEventListener("deviceorientation", handler, true);
+  }, []);
+
+  useEffect(() => {
+    const Ctor = (window.DeviceOrientationEvent ?? null) as OrientationCtor | null;
+    if (!Ctor) return;
+    if (typeof Ctor.requestPermission === "function") setCompassNeeded(true);
+    else attachOrientation();
+  }, [attachOrientation]);
+
+  const requestCompass = useCallback(async () => {
+    const Ctor = window.DeviceOrientationEvent as OrientationCtor;
+    if (typeof Ctor?.requestPermission !== "function") return;
+    try {
+      const res = await Ctor.requestPermission();
+      if (res === "granted") {
+        try {
+          localStorage.setItem("tether-compass", "1");
+        } catch {
+          /* private mode */
+        }
+        setCompassNeeded(false);
+        attachOrientation();
+      }
+    } catch {
+      /* needs a fresh user gesture — the chip stays visible */
+    }
+  }, [attachOrientation]);
+
+  /* -------------------------------------------------- first-touch setup
+     One handler on the first tap anywhere: unlock WebAudio, give a haptic
+     tick (instant feedback that haptics work on this device), and silently
+     re-attach previously granted compass access (iOS re-resolves without
+     showing a prompt when permission was already given). */
+  useEffect(() => {
+    const onFirstTouch = () => {
+      window.removeEventListener("pointerdown", onFirstTouch);
+      unlockAudio();
+      haptic("light");
+      try {
+        if (localStorage.getItem("tether-compass")) requestCompass();
+      } catch {
+        /* private mode */
+      }
+    };
+    window.addEventListener("pointerdown", onFirstTouch);
+    return () => window.removeEventListener("pointerdown", onFirstTouch);
+  }, [requestCompass]);
 
   /* ------------------------------------------------------------- actions */
   const addHeat = useCallback(
@@ -598,6 +698,9 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     myLocation,
     partnerLocation,
     requestLocation,
+    heading,
+    compassNeeded,
+    requestCompass,
     signUp,
     signIn,
     signOut,

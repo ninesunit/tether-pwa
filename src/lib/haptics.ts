@@ -1,39 +1,29 @@
 /**
  * The iOS Haptic Engine.
  *
- * Safari on iOS blocks `navigator.vibrate`, but as of iOS 17.4 WebKit fires a
- * real Taptic Engine tick whenever an `<input type="checkbox" switch>` is
- * toggled — including programmatic `.click()` calls that happen inside (or
- * shortly after) a user gesture. We keep one hidden switch mounted in the DOM
- * and click it to produce physical feedback.
+ * Safari on iOS blocks `navigator.vibrate`, but since iOS 17.4 WebKit fires
+ * a real Taptic Engine tick whenever an `<input type="checkbox" switch>` is
+ * toggled — including programmatic `.click()` calls made during (or shortly
+ * after) a trusted user gesture. The most reliable recipe in practice is a
+ * FRESH input per tick: create → click → remove. Persistent hidden inputs
+ * have proven flaky across iOS point releases.
  *
- * On Android / desktop Chrome we fall back to `navigator.vibrate`.
+ * Requirements on the device: iOS 17.4+, and Settings → Sounds & Haptics →
+ * System Haptics enabled. On Android / desktop Chrome we use
+ * `navigator.vibrate` instead.
  */
-
-let switchEl: HTMLInputElement | null = null;
-
-function ensureSwitch(): HTMLInputElement {
-  if (switchEl && document.body.contains(switchEl)) return switchEl;
-  const label = document.createElement("label");
-  label.setAttribute("aria-hidden", "true");
-  // Must stay INSIDE the viewport — WebKit skips the Taptic tick for
-  // offscreen or display:none switches. 1×1px, near-invisible, inert.
-  label.style.cssText =
-    "position:fixed;bottom:0;left:0;width:1px;height:1px;overflow:hidden;opacity:0.01;pointer-events:none;z-index:-1;";
-  const input = document.createElement("input");
-  input.type = "checkbox";
-  // Non-standard WebKit attribute — this is what unlocks the Taptic tick.
-  input.setAttribute("switch", "");
-  input.tabIndex = -1;
-  label.appendChild(input);
-  document.body.appendChild(label);
-  switchEl = input;
-  return input;
-}
 
 function tick() {
   try {
-    ensureSwitch().click();
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    // Non-standard WebKit attribute — this is what unlocks the Taptic tick.
+    input.setAttribute("switch", "");
+    input.style.cssText =
+      "position:fixed;bottom:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;";
+    document.body.appendChild(input);
+    input.click();
+    window.setTimeout(() => input.remove(), 60);
   } catch {
     /* haptics are decorative — never let them break a flow */
   }
@@ -64,7 +54,7 @@ export function haptic(pattern: HapticPattern = "light") {
     const ok = navigator.vibrate(vibratePatterns[pattern]);
     if (ok) return;
   }
-  // iOS path: schedule a burst of switch clicks shaping the pattern.
+  // iOS path: a burst of switch toggles shaping the pattern.
   for (const delay of patterns[pattern]) {
     if (delay === 0) tick();
     else window.setTimeout(tick, delay);

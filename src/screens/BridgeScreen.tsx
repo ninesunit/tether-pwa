@@ -21,6 +21,32 @@ const PROMPTS = [
   "What's the gentlest thing I've ever said to you?",
   "What made you laugh recently that I missed?",
   "What do you want more of from me — time, words, or touch?",
+  "What was the best part of your morning?",
+  "What's one thing you're looking forward to this week?",
+  "What smell reminds you of me?",
+  "What's a fear you've never said out loud to me?",
+  "Which of my habits do you secretly find adorable?",
+  "What meal should we learn to cook together?",
+  "When did you first realize you liked me?",
+  "What's a place you want to show me someday?",
+  "What compliment do you wish you heard more often?",
+  "What's the best gift I could give you that costs nothing?",
+  "What did you dream about last night — or wish you had?",
+  "If we had a whole rainy day together, how would we spend it?",
+  "What's one thing you admire about how I handle hard days?",
+  "What tiny detail about me do you think nobody else notices?",
+  "What's a promise you want us to make each other?",
+  "When do you feel closest to me?",
+  "What's something new you want us to try this month?",
+  "What was your favorite photo of us ever taken?",
+  "What's a word or phrase that's ours and no one else's?",
+  "What do you hope we're doing five years from tonight?",
+  "What's something I taught you without meaning to?",
+  "What little thing always makes a bad day better?",
+  "If our love had a color today, what would it be and why?",
+  "What's a question you've been wanting to ask me?",
+  "What part of today would have been better with me there?",
+  "What are you most grateful for about us right now?",
 ];
 
 function promptForToday(tetherId: string): string {
@@ -48,6 +74,7 @@ export default function BridgeScreen() {
   const [past, setPast] = useState<PastBridge[]>([]);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const me = session?.user.id;
   const partnerName = partnerProfile?.display_name ?? "them";
 
@@ -83,10 +110,18 @@ export default function BridgeScreen() {
       .limit(8);
     const qs = (recent as DailyQuestion[]) ?? [];
     const ids = qs.map((x) => x.id);
-    const { data: ans } = await supabase
+    const { data: ans, error: ansError } = await supabase
       .from("question_answers")
       .select("*")
       .in("question_id", ids);
+    // The original RLS policy on answers was self-referential and errored
+    // every read — if that (or anything else) breaks, say so instead of
+    // silently never revealing.
+    setLoadError(
+      ansError
+        ? "answers can't load — run supabase/migration-04-bridge-reassert.sql in the SQL editor."
+        : null,
+    );
     const allAnswers = (ans as QuestionAnswer[]) ?? [];
     setAnswers(allAnswers.filter((a) => a.question_id === (q as DailyQuestion).id));
     setPast(
@@ -115,8 +150,17 @@ export default function BridgeScreen() {
         },
       )
       .subscribe();
+    // iOS PWAs silently drop websockets in the background — refetch on
+    // foreground and every 30s so the reveal never gets stuck.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    const poll = window.setInterval(load, 30_000);
     return () => {
       supabase.removeChannel(ch);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.clearInterval(poll);
     };
   }, [tether, load]);
 
@@ -146,6 +190,7 @@ export default function BridgeScreen() {
       <header className="pt-16">
         <h2 className="font-serif text-3xl text-cream">the bridge</h2>
         <p className="mt-1 text-xs text-muted">one question a day. blind until you both answer.</p>
+        {loadError && <p className="mt-3 text-xs text-blush">{loadError}</p>}
       </header>
 
       {question && (

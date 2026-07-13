@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { LogOut, Unlink } from "lucide-react";
+import { LogOut, Unlink, Vibrate } from "lucide-react";
 import { useTether } from "../context/TetherContext";
 import { haptic } from "../lib/haptics";
+import { useKeyboardInset } from "../lib/useKeyboardInset";
 
 export default function SettingsSheet({
   open,
@@ -14,6 +15,7 @@ export default function SettingsSheet({
   const { profile, partnerProfile, updateName, signOut, untether } = useTether();
   const [name, setName] = useState(profile?.display_name ?? "");
   const [confirmUnlink, setConfirmUnlink] = useState(false);
+  const keyboardInset = useKeyboardInset();
 
   const saveName = async () => {
     if (name.trim() && name.trim() !== profile?.display_name) {
@@ -39,6 +41,7 @@ export default function SettingsSheet({
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
             className="glass-strong fixed inset-x-0 bottom-0 z-50 rounded-t-[2rem] p-6 pb-12 safe-bottom"
+            style={keyboardInset > 0 ? { bottom: keyboardInset } : undefined}
           >
             <div className="mx-auto mb-6 h-1 w-10 rounded-full bg-muted/40" />
             <p className="font-serif text-xl text-cream">your half</p>
@@ -66,6 +69,12 @@ export default function SettingsSheet({
             )}
 
             <div className="mt-10 space-y-3">
+              <button
+                onClick={() => haptic("heavy")}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-ember-900/70 py-3.5 text-sm text-blush-soft"
+              >
+                <Vibrate size={15} /> test haptics
+              </button>
               <button
                 onClick={() => {
                   haptic("light");

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AnimatePresence, motion, type PanInfo } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { MessageCircle, Images, Sparkles, Ticket, Route, Disc3, Settings2 } from "lucide-react";
 import { TetherProvider, useTether } from "./context/TetherContext";
 import AmbientBackground from "./components/AmbientBackground";
@@ -14,7 +14,6 @@ import TokensScreen from "./screens/TokensScreen";
 import PathScreen from "./screens/PathScreen";
 import NeedleScreen from "./screens/NeedleScreen";
 import { haptic } from "./lib/haptics";
-import { unlockAudio } from "./lib/sfx";
 
 const rooms = [
   { key: "chat", label: "chat", icon: MessageCircle, el: <ChatScreen /> },
@@ -71,11 +70,6 @@ function PairedApp() {
     haptic("light");
   };
 
-  const onDragEnd = (_: unknown, info: PanInfo) => {
-    if (info.offset.x < -70 || info.velocity.x < -400) go(index + 1);
-    else if (info.offset.x > 70 || info.velocity.x > 400) go(index - 1);
-  };
-
   return (
     <div className="relative h-full overflow-hidden">
       <CheerToast />
@@ -93,14 +87,12 @@ function PairedApp() {
       </button>
       <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <AnimatePresence mode="popLayout" custom={direction} initial={false}>
+        {/* No page-swipe: on iOS the container's drag listener beat the
+            line/tonearm gestures. The dock is the navigation. */}
         <motion.div
           key={rooms[index].key}
           className="h-full"
           custom={direction}
-          drag="x"
-          dragConstraints={{ left: 0, right: 0 }}
-          dragElastic={0.15}
-          onDragEnd={onDragEnd}
           initial={{ x: direction > 0 ? 80 : -80, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
           exit={{ x: direction > 0 ? -80 : 80, opacity: 0 }}
@@ -202,17 +194,8 @@ function Router() {
 }
 
 export default function App() {
-  // iOS gates WebAudio behind a user gesture — unlock on the first touch
-  // so even incoming pulses can sound.
-  useEffect(() => {
-    const unlock = () => {
-      unlockAudio();
-      window.removeEventListener("pointerdown", unlock);
-    };
-    window.addEventListener("pointerdown", unlock);
-    return () => window.removeEventListener("pointerdown", unlock);
-  }, []);
-
+  // First-touch setup (audio unlock, haptic check, compass re-attach)
+  // lives in TetherProvider.
   return (
     <TetherProvider>
       <Router />

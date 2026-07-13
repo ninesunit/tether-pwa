@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabaseClient";
 import { useTether } from "../context/TetherContext";
 import { haptic } from "../lib/haptics";
 import { sfx } from "../lib/sfx";
+import { useKeyboardInset } from "../lib/useKeyboardInset";
 import Fab from "../components/Fab";
 import type { Goal } from "../lib/types";
 
@@ -20,6 +21,7 @@ export default function PathScreen() {
   const [title, setTitle] = useState("");
   const [target, setTarget] = useState("8");
   const [cheeredId, setCheeredId] = useState<string | null>(null);
+  const keyboardInset = useKeyboardInset();
 
   const load = useCallback(async () => {
     if (!tether) return;
@@ -172,6 +174,7 @@ export default function PathScreen() {
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
             className="glass-strong fixed inset-x-0 bottom-0 z-40 rounded-t-[2rem] p-6 pb-10 safe-bottom"
+            style={keyboardInset > 0 ? { bottom: keyboardInset } : undefined}
           >
             <p className="font-serif text-xl text-cream">a new shared goal</p>
             <input

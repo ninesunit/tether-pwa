@@ -27,11 +27,27 @@ interface TrackResult {
 const HOLD_MS = 3000;
 
 /**
- * iTunes search via JSONP — the API's CORS headers are unreliable
- * (searches failed on the deployed PWA), but its `callback` JSONP
- * interface works everywhere with no server in between.
+ * Music search. Primary path: our same-origin /api/search proxy (a Vercel
+ * function in production, a vite proxy in dev) — immune to iTunes' flaky
+ * CORS on iOS PWAs. Fallback: iTunes JSONP directly.
  */
-function itunesSearch(term: string): Promise<TrackResult[]> {
+async function musicSearch(term: string): Promise<TrackResult[]> {
+  try {
+    const res = await fetch(
+      `/api/search?term=${encodeURIComponent(term)}&limit=12`,
+      { signal: AbortSignal.timeout(9000) },
+    );
+    if (res.ok) {
+      const json = (await res.json()) as { results?: TrackResult[] };
+      if (json.results) return json.results;
+    }
+  } catch {
+    /* fall through to JSONP */
+  }
+  return itunesJsonp(term);
+}
+
+function itunesJsonp(term: string): Promise<TrackResult[]> {
   return new Promise((resolve, reject) => {
     const cb = `__itunes_cb_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
     const script = document.createElement("script");
@@ -157,7 +173,7 @@ function Turntable({
   const [finished, setFinished] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const armX = useMotionValue(0);
-  const armRotate = useTransform(armX, [0, 120], [-32, 8]);
+  const armRotate = useTransform(armX, [-110, 0], [-26, 14]);
   const dropped = useRef(false);
 
   const dropNeedle = async () => {
@@ -222,23 +238,24 @@ function Turntable({
           </div>
         </motion.div>
 
-        {/* tonearm — drag it onto the record */}
+        {/* tonearm — drag it onto the record (leftward, staying on-screen) */}
         {!playing && (
           <motion.div
             drag="x"
-            dragConstraints={{ left: 0, right: 120 }}
-            dragElastic={0.08}
-            style={{ x: armX, rotate: armRotate, transformOrigin: "top right", touchAction: "none" }}
+            dragConstraints={{ left: -110, right: 0 }}
+            dragElastic={0.06}
+            dragMomentum={false}
+            style={{ x: armX, rotate: armRotate, transformOrigin: "top center", touchAction: "none" }}
             onPointerDown={(e) => e.stopPropagation()}
             onDragEnd={() => {
-              if (armX.get() > 96) dropNeedle();
+              if (armX.get() < -82) dropNeedle();
               else haptic("light");
             }}
-            className="absolute -right-6 -top-4 h-40 w-2 cursor-grab active:cursor-grabbing"
+            className="absolute -top-2 right-2 h-44 w-10 cursor-grab active:cursor-grabbing"
           >
-            <span className="absolute right-0 top-0 h-5 w-5 rounded-full bg-ember-800 shadow-lg" />
-            <span className="absolute right-2 top-2 block h-36 w-1 rounded-full bg-gradient-to-b from-muted to-blush-soft" />
-            <span className="absolute -left-1.5 bottom-0 h-6 w-3.5 rounded-sm bg-amber-glow/90" />
+            <span className="absolute right-1.5 top-0 h-6 w-6 rounded-full bg-ember-800 shadow-lg" />
+            <span className="absolute right-4 top-4 block h-36 w-1 rounded-full bg-gradient-to-b from-muted to-blush-soft" />
+            <span className="absolute bottom-0 right-2.5 h-7 w-4 rounded-sm bg-amber-glow/90" />
           </motion.div>
         )}
       </div>
@@ -305,8 +322,13 @@ export default function NeedleScreen() {
         },
       )
       .subscribe();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       supabase.removeChannel(ch);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [tether, load]);
 
@@ -316,7 +338,7 @@ export default function NeedleScreen() {
     setError(null);
     haptic("light");
     try {
-      const results = await itunesSearch(query);
+      const results = await musicSearch(query);
       setResults(results);
       if (results.length === 0) setError("nothing in the crate for that. try another search.");
     } catch {

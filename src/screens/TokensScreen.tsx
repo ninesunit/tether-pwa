@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabaseClient";
 import { useTether } from "../context/TetherContext";
 import { haptic } from "../lib/haptics";
 import { sfx } from "../lib/sfx";
+import { useKeyboardInset } from "../lib/useKeyboardInset";
 import Fab from "../components/Fab";
 import type { Token } from "../lib/types";
 
@@ -28,6 +29,7 @@ export default function TokensScreen() {
   const [minting, setMinting] = useState(false);
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
+  const keyboardInset = useKeyboardInset();
   const me = session?.user.id;
 
   const load = useCallback(async () => {
@@ -184,6 +186,7 @@ export default function TokensScreen() {
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
             className="glass-strong fixed inset-x-0 bottom-0 z-40 rounded-t-[2rem] p-6 pb-10 safe-bottom"
+            style={keyboardInset > 0 ? { bottom: keyboardInset } : undefined}
           >
             <p className="font-serif text-xl text-cream">mint a token</p>
             <input
