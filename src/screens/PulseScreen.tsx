@@ -58,15 +58,18 @@ export default function PulseScreen() {
 
   return (
     <div className="relative flex h-full flex-col items-center px-6 safe-top">
+      {/* the geographic tether — spans the whole screen, aimed at them */}
+      <TetherLine />
+
       {/* header */}
-      <div className="mt-16 w-full">
+      <div className="z-10 mt-16 w-full">
         <p className="text-sm text-muted">
           {profile?.display_name ? `hi, ${profile.display_name.toLowerCase()}` : ""}
         </p>
       </div>
 
       {/* partner chip */}
-      <div className="glass mt-3 flex items-center gap-2.5 rounded-full px-4 py-2">
+      <div className="glass z-10 mt-3 flex items-center gap-2.5 rounded-full px-4 py-2">
         <span className="relative flex h-7 w-7 items-center justify-center rounded-full bg-burgundy/70 font-serif text-sm text-blush">
           {partnerName.charAt(0).toUpperCase()}
           <motion.span
@@ -81,12 +84,12 @@ export default function PulseScreen() {
       </div>
 
       {/* the core, ringed by incoming ripples */}
-      <div className="relative flex w-full flex-1 flex-col items-center justify-center">
+      <div className="pointer-events-none relative z-10 flex w-full flex-1 flex-col items-center justify-center">
         <AnimatePresence>
           {ripples.map((id) => (
             <motion.div
               key={id}
-              className="absolute rounded-full border border-blush/50"
+              className="pointer-events-none absolute rounded-full border border-blush/50"
               initial={{ width: 190, height: 190, opacity: 0.8 }}
               animate={{ width: 560, height: 560, opacity: 0 }}
               exit={{ opacity: 0 }}
@@ -97,15 +100,10 @@ export default function PulseScreen() {
         </AnimatePresence>
 
         <ResonanceCore onTap={onCoreTap} />
-
-        {/* the tether line, strung beneath the core */}
-        <div className="mt-10 w-full max-w-md">
-          <TetherLine />
-        </div>
       </div>
 
       {/* sent feedback + mood + together */}
-      <div className="mb-28 w-full space-y-4">
+      <div className="z-10 mb-28 w-full space-y-4">
         <AnimatePresence>
           {sentAt && Date.now() - sentAt < 3000 && (
             <motion.p

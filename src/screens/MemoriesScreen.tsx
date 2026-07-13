@@ -23,6 +23,7 @@ export default function MemoriesScreen() {
   const [pending, setPending] = useState<{ file: File; preview: string } | null>(null);
   const [caption, setCaption] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -87,7 +88,19 @@ export default function MemoriesScreen() {
     haptic("heavy");
     setConfirmDeleteId(null);
     setMemories((ms) => ms.filter((x) => x.id !== m.id));
-    await supabase.from("memories").delete().eq("id", m.id);
+    // .select() returns the deleted rows — with a missing RLS delete policy
+    // Postgres "succeeds" while deleting nothing, so verify explicitly.
+    const { data: deleted, error } = await supabase
+      .from("memories")
+      .delete()
+      .eq("id", m.id)
+      .select();
+    if (error || !deleted?.length) {
+      setMemories((ms) => (ms.some((x) => x.id === m.id) ? ms : [m, ...ms]));
+      setDeleteError("couldn't delete — run supabase/migration-03 in the SQL editor first.");
+      window.setTimeout(() => setDeleteError(null), 5000);
+      return;
+    }
     await supabase.storage.from("memories").remove([m.storage_path]);
   };
 
@@ -103,6 +116,15 @@ export default function MemoriesScreen() {
       <header className="px-1 pt-16">
         <h2 className="font-serif text-3xl text-cream">the wall</h2>
         <p className="mt-1 text-xs text-muted">photos tossed on the table, kept forever.</p>
+        {deleteError && (
+          <motion.p
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-3 text-xs text-blush"
+          >
+            {deleteError}
+          </motion.p>
+        )}
       </header>
 
       <div className="mt-8 grid grid-cols-2 gap-x-4 gap-y-9">

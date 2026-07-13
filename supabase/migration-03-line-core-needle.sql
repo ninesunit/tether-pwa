@@ -12,12 +12,20 @@ drop policy if exists "memories delete" on public.memories;
 create policy "memories delete" on public.memories
   for delete using (public.is_tether_member (tether_id));
 
-drop policy if exists "memories storage delete" on storage.objects;
-create policy "memories storage delete" on storage.objects
-  for delete using (
-    bucket_id = 'memories'
-    and public.is_tether_member ((split_part(name, '/', 1))::uuid)
-  );
+-- Storage policies can require table ownership on some projects; never let
+-- that abort the rest of this migration. If you see the NOTICE below,
+-- add the delete policy via Dashboard → Storage → memories → Policies.
+do $$
+begin
+  drop policy if exists "memories storage delete" on storage.objects;
+  create policy "memories storage delete" on storage.objects
+    for delete using (
+      bucket_id = 'memories'
+      and public.is_tether_member ((split_part(name, '/', 1))::uuid)
+    );
+exception when insufficient_privilege then
+  raise notice 'Could not create the storage delete policy here — add it in Dashboard > Storage > Policies (DELETE on bucket memories).';
+end $$;
 
 -- ------------------------------------------------------------
 -- 2) TETHER LINE: last known location per partner (compass anchor)
@@ -197,3 +205,7 @@ begin
   alter publication supabase_realtime add table public.last_locations;
 exception when duplicate_object then null;
 end $$;
+
+-- Refresh PostgREST's schema cache immediately so the new RPCs
+-- (send_needle_drop, play_needle_drop, add_heat) resolve without a restart.
+notify pgrst, 'reload schema';

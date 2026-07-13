@@ -117,7 +117,7 @@ export default function ResonanceCore({ onTap }: { onTap: () => void }) {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         style={{ touchAction: "none" }}
-        className="relative h-48 w-48"
+        className="pointer-events-auto relative h-48 w-48"
         animate={{
           scale: resonating ? [1, 1.22, 1.05] : holding ? 1.06 : [1, cold ? 1.015 : 1.06, 1],
         }}

@@ -30,17 +30,29 @@ export default function AuthScreen() {
         transition={{ duration: 1.2, ease: "easeOut" }}
         className="w-full max-w-sm"
       >
-        {/* wordmark */}
+        {/* wordmark — the tether string */}
         <div className="flex items-center gap-4">
-          <motion.span
-            className="block h-11 w-11 rounded-full"
-            style={{
-              background:
-                "radial-gradient(circle at 35% 30%, #c65a82 0%, #7a2244 60%, #3c1c2c 100%)",
-            }}
-            animate={{ boxShadow: ["0 0 18px 2px rgba(244,166,189,0.25)", "0 0 30px 8px rgba(244,166,189,0.4)", "0 0 18px 2px rgba(244,166,189,0.25)"] }}
+          <motion.svg
+            viewBox="0 0 64 44"
+            className="h-11 w-16"
+            animate={{ filter: [
+              "drop-shadow(0 0 6px rgba(244,166,189,0.35))",
+              "drop-shadow(0 0 14px rgba(244,166,189,0.55))",
+              "drop-shadow(0 0 6px rgba(244,166,189,0.35))",
+            ] }}
             transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-          />
+          >
+            <motion.path
+              fill="none"
+              stroke="#f4a6bd"
+              strokeWidth="3"
+              strokeLinecap="round"
+              animate={{ d: ["M 8 14 Q 32 38 56 14", "M 8 14 Q 32 30 56 14", "M 8 14 Q 32 38 56 14"] }}
+              transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+            />
+            <circle cx="8" cy="14" r="4.5" fill="#f2b263" />
+            <circle cx="56" cy="14" r="4.5" fill="#f4a6bd" />
+          </motion.svg>
           <div>
             <h1 className="text-glow font-serif text-4xl tracking-wide text-cream">tether</h1>
             <p className="mt-0.5 text-sm text-muted">a quiet space for two.</p>
