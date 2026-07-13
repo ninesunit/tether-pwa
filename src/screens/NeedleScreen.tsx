@@ -26,6 +26,39 @@ interface TrackResult {
 
 const HOLD_MS = 3000;
 
+/**
+ * iTunes search via JSONP — the API's CORS headers are unreliable
+ * (searches failed on the deployed PWA), but its `callback` JSONP
+ * interface works everywhere with no server in between.
+ */
+function itunesSearch(term: string): Promise<TrackResult[]> {
+  return new Promise((resolve, reject) => {
+    const cb = `__itunes_cb_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+    const script = document.createElement("script");
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("timeout"));
+    }, 9000);
+    const cleanup = () => {
+      window.clearTimeout(timer);
+      delete (window as unknown as Record<string, unknown>)[cb];
+      script.remove();
+    };
+    (window as unknown as Record<string, unknown>)[cb] = (data: { results?: TrackResult[] }) => {
+      cleanup();
+      resolve(data.results ?? []);
+    };
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("network"));
+    };
+    script.src = `https://itunes.apple.com/search?term=${encodeURIComponent(
+      term,
+    )}&media=music&entity=song&limit=12&callback=${cb}`;
+    document.head.appendChild(script);
+  });
+}
+
 /* ---------------------------------------------------- hold-to-send */
 function HoldToSend({ onComplete }: { onComplete: () => void }) {
   const [progress, setProgress] = useState(0);
@@ -283,11 +316,9 @@ export default function NeedleScreen() {
     setError(null);
     haptic("light");
     try {
-      const res = await fetch(
-        `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&media=music&entity=song&limit=12`,
-      );
-      const json = await res.json();
-      setResults((json.results as TrackResult[]) ?? []);
+      const results = await itunesSearch(query);
+      setResults(results);
+      if (results.length === 0) setError("nothing in the crate for that. try another search.");
     } catch {
       setError("couldn't reach the crate. try again.");
     }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { useTether } from "../context/TetherContext";
 import { haptic } from "../lib/haptics";
+import { sfx } from "../lib/sfx";
 
 /**
  * The Resonance Core — the couple's living entity. Heat (0–100, decaying
@@ -72,6 +73,7 @@ export default function ResonanceCore({ onTap }: { onTap: () => void }) {
       resonatedRef.current = true;
       setResonating(true);
       haptic("pulse");
+      sfx.swell();
       addHeat(6);
       const t = setTimeout(() => setResonating(false), 1800);
       return () => clearTimeout(t);
@@ -105,7 +107,7 @@ export default function ResonanceCore({ onTap }: { onTap: () => void }) {
       {resonating && (
         <motion.div
           className="absolute rounded-full border border-blush/60"
-          initial={{ width: 190, height: 190, opacity: 0.9 }}
+          initial={{ width: 165, height: 165, opacity: 0.9 }}
           animate={{ width: 620, height: 620, opacity: 0 }}
           transition={{ duration: 1.6, ease: "easeOut" }}
         />
@@ -117,7 +119,7 @@ export default function ResonanceCore({ onTap }: { onTap: () => void }) {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         style={{ touchAction: "none" }}
-        className="pointer-events-auto relative h-48 w-48"
+        className="pointer-events-auto relative h-40 w-40"
         animate={{
           scale: resonating ? [1, 1.22, 1.05] : holding ? 1.06 : [1, cold ? 1.015 : 1.06, 1],
         }}

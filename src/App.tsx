@@ -14,6 +14,7 @@ import TokensScreen from "./screens/TokensScreen";
 import PathScreen from "./screens/PathScreen";
 import NeedleScreen from "./screens/NeedleScreen";
 import { haptic } from "./lib/haptics";
+import { unlockAudio } from "./lib/sfx";
 
 const rooms = [
   { key: "chat", label: "chat", icon: MessageCircle, el: <ChatScreen /> },
@@ -46,7 +47,7 @@ function CheerToast() {
           initial={{ opacity: 0, y: -24 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -24 }}
-          className="glass-strong fixed left-1/2 top-14 z-50 -translate-x-1/2 rounded-full px-5 py-3 safe-top"
+          className="glass-strong below-notch fixed left-1/2 z-50 -translate-x-1/2 rounded-full px-5 py-3"
         >
           <p className="text-sm text-cream">
             <span className="text-blush">{partnerProfile?.display_name ?? "they"}</span> cheered
@@ -86,7 +87,7 @@ function PairedApp() {
           setSettingsOpen(true);
         }}
         aria-label="settings"
-        className="glass fixed right-5 top-14 z-40 flex h-9 w-9 items-center justify-center rounded-full safe-top"
+        className="glass below-notch fixed right-5 z-40 flex h-9 w-9 items-center justify-center rounded-full"
       >
         <Settings2 size={15} className="text-muted" />
       </button>
@@ -110,7 +111,7 @@ function PairedApp() {
       </AnimatePresence>
 
       {/* floating glass nav — the pulse orb sits at its center */}
-      <nav className="glass-strong fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full px-3 py-2 safe-bottom">
+      <nav className="glass-strong nav-dock fixed left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full px-3 py-2">
         {rooms.map((r, i) => {
           const active = i === index;
           if (r.key === "pulse") {
@@ -201,6 +202,17 @@ function Router() {
 }
 
 export default function App() {
+  // iOS gates WebAudio behind a user gesture — unlock on the first touch
+  // so even incoming pulses can sound.
+  useEffect(() => {
+    const unlock = () => {
+      unlockAudio();
+      window.removeEventListener("pointerdown", unlock);
+    };
+    window.addEventListener("pointerdown", unlock);
+    return () => window.removeEventListener("pointerdown", unlock);
+  }, []);
+
   return (
     <TetherProvider>
       <Router />

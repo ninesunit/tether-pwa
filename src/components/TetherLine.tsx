@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Compass } from "lucide-react";
+import { Compass, MapPin } from "lucide-react";
 import { useTether } from "../context/TetherContext";
 import { haptic } from "../lib/haptics";
+import { sfx } from "../lib/sfx";
 
 /**
  * The Tether Line — a geographic string stretched across the whole screen,
@@ -44,7 +45,8 @@ type OrientationCtor = typeof DeviceOrientationEvent & {
 };
 
 export default function TetherLine() {
-  const { broadcast, onBroadcast, myLocation, partnerLocation, partnerProfile } = useTether();
+  const { broadcast, onBroadcast, myLocation, partnerLocation, partnerProfile, requestLocation } =
+    useTether();
 
   const [vp, setVp] = useState({ w: window.innerWidth, h: window.innerHeight });
   const [heading, setHeading] = useState<number | null>(null);
@@ -173,6 +175,7 @@ export default function TetherLine() {
     const offSnap = onBroadcast("line_snap", () => {
       remoteUntilRef.current = 0; // spring takes over → wobble
       haptic("heavy");
+      sfx.pluck();
     });
     return () => {
       offLine();
@@ -211,6 +214,7 @@ export default function TetherLine() {
     e.stopPropagation();
     draggingRef.current = false;
     haptic("medium");
+    sfx.pluck();
     broadcast("line_snap", {});
   };
 
@@ -281,16 +285,37 @@ export default function TetherLine() {
         </div>
       )}
 
-      {/* compass unlock (iOS) */}
-      {needsPermission && hasFix && (
-        <button
-          onClick={requestCompass}
-          className="glass pointer-events-auto absolute bottom-[13.5rem] left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11px] text-blush-soft"
-        >
-          <Compass size={11} />
-          point the line at {partnerName.toLowerCase()}
-        </button>
-      )}
+      {/* one status chip at a time, tucked under the core:
+          location → partner's location → compass unlock (iOS) */}
+      <div
+        className="absolute left-1/2 -translate-x-1/2"
+        style={{ top: "calc(50% + 118px)" }}
+      >
+        {!myLocation ? (
+          <button
+            onClick={() => {
+              haptic("light");
+              requestLocation();
+            }}
+            className="glass pointer-events-auto flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11px] text-blush-soft"
+          >
+            <MapPin size={11} />
+            share location to aim the line
+          </button>
+        ) : !partnerLocation ? (
+          <p className="glass rounded-full px-3.5 py-1.5 text-[11px] text-muted">
+            waiting for {partnerName.toLowerCase()}'s location…
+          </p>
+        ) : needsPermission ? (
+          <button
+            onClick={requestCompass}
+            className="glass pointer-events-auto flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[11px] text-blush-soft"
+          >
+            <Compass size={11} />
+            point the line at {partnerName.toLowerCase()}
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

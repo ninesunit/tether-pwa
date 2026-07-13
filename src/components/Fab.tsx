@@ -27,7 +27,7 @@ export default function Fab({
         haptic("light");
         onClick();
       }}
-      className="fab fixed bottom-[7rem] left-1/2 z-30 -translate-x-1/2 safe-bottom"
+      className="fab above-nav fixed left-1/2 z-30 -translate-x-1/2"
     >
       <Icon size={15} strokeWidth={2} className="text-blush" />
       <span>{label}</span>

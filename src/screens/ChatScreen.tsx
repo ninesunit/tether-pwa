@@ -4,6 +4,7 @@ import { ArrowUp } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { useTether } from "../context/TetherContext";
 import { haptic } from "../lib/haptics";
+import { sfx } from "../lib/sfx";
 import type { Message } from "../lib/types";
 
 function dayLabel(iso: string) {
@@ -52,7 +53,10 @@ export default function ChatScreen() {
         (payload) => {
           const msg = payload.new as Message;
           setMessages((m) => (m.some((x) => x.id === msg.id) ? m : [...m, msg]));
-          if (msg.sender_id !== me) haptic("medium");
+          if (msg.sender_id !== me) {
+            haptic("medium");
+            sfx.pop();
+          }
         },
       )
       .subscribe();
@@ -70,6 +74,7 @@ export default function ChatScreen() {
     const body = draft.trim();
     setDraft("");
     haptic("light");
+    sfx.pop();
     addHeat(2);
     // optimistic bubble; realtime insert replaces it by id de-dupe
     const temp: Message = {
@@ -106,7 +111,7 @@ export default function ChatScreen() {
         <p className="mt-1 text-xs text-muted">no read receipts. no pressure. just you two.</p>
       </header>
 
-      <div className="mt-4 flex-1 space-y-2 overflow-y-auto px-5 pb-44">
+      <div className="mt-4 flex-1 space-y-2 overflow-y-auto px-5 pb-56">
         {messages.map((m) => {
           const mine = m.sender_id === me;
           const label = dayLabel(m.created_at);
@@ -144,7 +149,7 @@ export default function ChatScreen() {
       </div>
 
       {/* composer — floats above the nav */}
-      <div className="fixed inset-x-0 bottom-24 z-30 px-5 safe-bottom">
+      <div className="above-nav fixed inset-x-0 z-30 px-5">
         <div className="glass-strong flex items-end gap-2 rounded-[1.75rem] p-2 pl-5">
           <textarea
             rows={1}

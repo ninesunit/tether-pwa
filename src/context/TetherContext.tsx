@@ -12,6 +12,7 @@ import {
 import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { haptic } from "../lib/haptics";
+import { sfx } from "../lib/sfx";
 import type {
   LastLocation,
   PresencePayload,
@@ -69,6 +70,8 @@ interface TetherContextValue {
   /** Live device position (when granted) and partner's last known position. */
   myLocation: { lat: number; lng: number } | null;
   partnerLocation: { lat: number; lng: number } | null;
+  /** Ask for (or retry) the geolocation permission from a user gesture. */
+  requestLocation: () => void;
   signUp: (email: string, password: string, name: string) => Promise<string | null>;
   signIn: (email: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
@@ -125,6 +128,7 @@ export function TetherProvider({ children }: { children: ReactNode }) {
   const togetherRef = useRef(false);
   const trackRef = useRef<(() => void) | null>(null);
   const lastLocationUpsertRef = useRef(0);
+  const [locationNonce, setLocationNonce] = useState(0);
   const listenersRef = useRef(new Map<string, Set<(p: Record<string, unknown>) => void>>());
 
   const emit = useCallback((event: string, payload: Record<string, unknown>) => {
@@ -375,10 +379,12 @@ export function TetherProvider({ children }: { children: ReactNode }) {
       .on("broadcast", { event: "pulse" }, () => {
         setLastPulseAt(Date.now());
         haptic("pulse");
+        sfx.heartbeat();
       })
       .on("broadcast", { event: "cheer" }, ({ payload }) => {
         setLastCheer({ text: (payload as { text?: string })?.text ?? "", at: Date.now() });
         haptic("success");
+        sfx.chime();
       })
       .on("broadcast", { event: "line" }, ({ payload }) => emit("line", payload ?? {}))
       .on("broadcast", { event: "line_snap" }, ({ payload }) => emit("line_snap", payload ?? {}))
@@ -390,34 +396,7 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     // expose so setTogether can re-track
     trackRef.current = track;
 
-    // Coarse position for the "near each other" glow. Optional — the app
-    // degrades gracefully if the user never grants location.
-    let watchId: number | null = null;
-    if ("geolocation" in navigator) {
-      watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          myPositionRef.current = loc;
-          setMyLocation(loc);
-          track();
-          // Persist the last known position for the compass (max every 2 min).
-          if (Date.now() - lastLocationUpsertRef.current > 120_000) {
-            lastLocationUpsertRef.current = Date.now();
-            supabase
-              .from("last_locations")
-              .upsert({ user_id: userId, tether_id: tether.id, lat: loc.lat, lng: loc.lng, updated_at: new Date().toISOString() })
-              .then(() => {});
-          }
-        },
-        () => {
-          /* permission denied — presence still works, proximity doesn't */
-        },
-        { enableHighAccuracy: false, maximumAge: 60_000 },
-      );
-    }
-
     return () => {
-      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
       supabase.removeChannel(channel);
       channelRef.current = null;
       trackRef.current = null;
@@ -426,6 +405,51 @@ export function TetherProvider({ children }: { children: ReactNode }) {
       setPartnerTogether(false);
     };
   }, [tether, userId, emit]);
+
+  /* ------------------------------------------------- device geolocation
+     Its own effect so a "share location" tap (locationNonce bump) can
+     restart the watch after an earlier denial or a missed iOS prompt. */
+  useEffect(() => {
+    if (!tether?.partner_b || !userId || !("geolocation" in navigator)) return;
+    const tetherId = tether.id;
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        myPositionRef.current = loc;
+        setMyLocation(loc);
+        trackRef.current?.();
+        // Persist the last known position for the compass (max every 2 min).
+        if (Date.now() - lastLocationUpsertRef.current > 120_000) {
+          lastLocationUpsertRef.current = Date.now();
+          supabase
+            .from("last_locations")
+            .upsert({
+              user_id: userId,
+              tether_id: tetherId,
+              lat: loc.lat,
+              lng: loc.lng,
+              updated_at: new Date().toISOString(),
+            })
+            .then(() => {});
+        }
+      },
+      () => {
+        /* denied — presence still works; the line shows a retry chip */
+      },
+      { enableHighAccuracy: false, maximumAge: 60_000 },
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [tether, userId, locationNonce]);
+
+  const requestLocation = useCallback(() => {
+    // Fired inside a tap so iOS shows its native prompt, then restart the watch.
+    navigator.geolocation?.getCurrentPosition(
+      () => setLocationNonce((n) => n + 1),
+      () => {},
+      { timeout: 12_000 },
+    );
+    setLocationNonce((n) => n + 1);
+  }, []);
 
   /* ------------------------------------------------------------- actions */
   const addHeat = useCallback(
@@ -442,6 +466,7 @@ export function TetherProvider({ children }: { children: ReactNode }) {
 
   const sendPulse = useCallback(() => {
     haptic("medium");
+    sfx.thump();
     channelRef.current?.send({ type: "broadcast", event: "pulse", payload: {} });
     addHeat(3);
   }, [addHeat]);
@@ -572,6 +597,7 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     addHeat,
     myLocation,
     partnerLocation,
+    requestLocation,
     signUp,
     signIn,
     signOut,

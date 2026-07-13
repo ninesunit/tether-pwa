@@ -16,8 +16,10 @@ function ensureSwitch(): HTMLInputElement {
   if (switchEl && document.body.contains(switchEl)) return switchEl;
   const label = document.createElement("label");
   label.setAttribute("aria-hidden", "true");
+  // Must stay INSIDE the viewport — WebKit skips the Taptic tick for
+  // offscreen or display:none switches. 1×1px, near-invisible, inert.
   label.style.cssText =
-    "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;top:-100px;left:-100px;";
+    "position:fixed;bottom:0;left:0;width:1px;height:1px;overflow:hidden;opacity:0.01;pointer-events:none;z-index:-1;";
   const input = document.createElement("input");
   input.type = "checkbox";
   // Non-standard WebKit attribute — this is what unlocks the Taptic tick.

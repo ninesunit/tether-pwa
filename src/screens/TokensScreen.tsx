@@ -4,6 +4,7 @@ import { Plus, Sparkles } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { useTether } from "../context/TetherContext";
 import { haptic } from "../lib/haptics";
+import { sfx } from "../lib/sfx";
 import Fab from "../components/Fab";
 import type { Token } from "../lib/types";
 
@@ -71,6 +72,7 @@ export default function TokensScreen() {
 
   const redeem = async (t: Token) => {
     haptic("heavy");
+    sfx.chime();
     await supabase.from("tokens").update({ redeemed_at: new Date().toISOString() }).eq("id", t.id);
     sendPulse(); // let the sender feel it being cashed in
   };

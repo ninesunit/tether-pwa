@@ -4,6 +4,7 @@ import { Plus, Heart } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { useTether } from "../context/TetherContext";
 import { haptic } from "../lib/haptics";
+import { sfx } from "../lib/sfx";
 import Fab from "../components/Fab";
 import type { Goal } from "../lib/types";
 
@@ -70,6 +71,8 @@ export default function PathScreen() {
     if (g.progress >= g.target) return;
     const done = g.progress + 1 >= g.target;
     haptic(done ? "success" : "medium");
+    if (done) sfx.chime();
+    else sfx.pop();
     // optimistic
     setGoals((gs) =>
       gs.map((x) => (x.id === g.id ? { ...x, progress: Math.min(x.target, x.progress + 1) } : x)),

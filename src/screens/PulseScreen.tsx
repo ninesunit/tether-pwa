@@ -90,7 +90,7 @@ export default function PulseScreen() {
             <motion.div
               key={id}
               className="pointer-events-none absolute rounded-full border border-blush/50"
-              initial={{ width: 190, height: 190, opacity: 0.8 }}
+              initial={{ width: 165, height: 165, opacity: 0.8 }}
               animate={{ width: 560, height: 560, opacity: 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 2.4, ease: "easeOut" }}
@@ -102,8 +102,11 @@ export default function PulseScreen() {
         <ResonanceCore onTap={onCoreTap} />
       </div>
 
-      {/* sent feedback + mood + together */}
-      <div className="z-10 mb-28 w-full space-y-4">
+      {/* sent feedback + mood + together — kept clear of the nav dock */}
+      <div
+        className="z-10 w-full space-y-3"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 96px)" }}
+      >
         <AnimatePresence>
           {sentAt && Date.now() - sentAt < 3000 && (
             <motion.p

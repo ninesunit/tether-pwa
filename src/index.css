@@ -60,6 +60,18 @@ textarea {
   padding-bottom: env(safe-area-inset-bottom, 12px);
 }
 
+/* Anchors for floating chrome — offsets, not internal padding, so the
+   pills keep their shape inside an iOS standalone PWA's safe areas. */
+.nav-dock {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+}
+.above-nav {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 88px);
+}
+.below-notch {
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+}
+
 /* ---- shared surfaces ------------------------------------------------ */
 
 .glass {
