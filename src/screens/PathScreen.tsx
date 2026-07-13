@@ -4,6 +4,7 @@ import { Plus, Heart } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { useTether } from "../context/TetherContext";
 import { haptic } from "../lib/haptics";
+import Fab from "../components/Fab";
 import type { Goal } from "../lib/types";
 
 /**
@@ -203,18 +204,7 @@ export default function PathScreen() {
         )}
       </AnimatePresence>
 
-      {!adding && (
-        <motion.button
-          whileTap={{ scale: 0.94 }}
-          onClick={() => {
-            haptic("light");
-            setAdding(true);
-          }}
-          className="glass-strong fixed bottom-24 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full px-6 py-3 text-sm text-cream safe-bottom"
-        >
-          <Plus size={16} className="text-blush" /> new goal
-        </motion.button>
-      )}
+      {!adding && <Fab icon={Plus} label="new goal" onClick={() => setAdding(true)} />}
     </div>
   );
 }

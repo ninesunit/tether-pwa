@@ -76,6 +76,33 @@ export interface SpaceState {
   updated_at: string;
 }
 
+export interface TetherCore {
+  tether_id: string;
+  heat_level: number;
+  last_interaction_at: string;
+}
+
+export interface NeedleDrop {
+  id: string;
+  tether_id: string;
+  sender_id: string;
+  track_name: string;
+  artist_name: string;
+  artwork_url: string | null;
+  preview_url: string | null;
+  status: "waiting" | "played";
+  created_at: string;
+  played_at: string | null;
+}
+
+export interface LastLocation {
+  user_id: string;
+  tether_id: string;
+  lat: number;
+  lng: number;
+  updated_at: string;
+}
+
 /** Payload each client tracks into the shared Presence channel. */
 export interface PresencePayload {
   user_id: string;

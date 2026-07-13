@@ -17,8 +17,9 @@ export const supabase = createClient(url, anonKey, {
   },
   realtime: {
     params: {
-      // One couple, two clients — keep the event budget tiny for free tier.
-      eventsPerSecond: 5,
+      // One couple, two clients. High enough for the Tether Line's live
+      // drag stream (throttled client-side to ~15/s) while staying modest.
+      eventsPerSecond: 20,
     },
   },
 });

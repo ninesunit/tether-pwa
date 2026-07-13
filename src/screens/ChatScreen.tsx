@@ -24,7 +24,7 @@ function timeLabel(iso: string) {
  * (Table name stays `letters` from the earlier slow-inbox design.)
  */
 export default function ChatScreen() {
-  const { tether, session, partnerProfile } = useTether();
+  const { tether, session, partnerProfile, addHeat } = useTether();
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -70,6 +70,7 @@ export default function ChatScreen() {
     const body = draft.trim();
     setDraft("");
     haptic("light");
+    addHeat(2);
     // optimistic bubble; realtime insert replaces it by id de-dupe
     const temp: Message = {
       id: `temp-${Date.now()}`,

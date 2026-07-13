@@ -107,6 +107,27 @@ textarea {
   filter: contrast(1.05) saturate(0.82) sepia(0.14) brightness(1.02);
 }
 
+.fab {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.85rem 1.5rem;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #8a2a4e 0%, #5c2148 100%);
+  border: 1px solid rgba(244, 166, 189, 0.25);
+  color: var(--color-cream);
+  font-size: 0.875rem;
+  font-weight: 450;
+  letter-spacing: 0.02em;
+  box-shadow:
+    0 14px 34px -10px rgba(0, 0, 0, 0.75),
+    0 6px 20px -6px rgba(138, 42, 78, 0.6),
+    inset 0 1px 0 rgba(244, 166, 189, 0.14);
+}
+.fab:disabled {
+  opacity: 0.45;
+}
+
 .eyebrow {
   font-size: 10px;
   letter-spacing: 0.22em;

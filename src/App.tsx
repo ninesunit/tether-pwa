@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, type PanInfo } from "framer-motion";
-import { MessageCircle, Images, Sparkles, Ticket, Route } from "lucide-react";
+import { MessageCircle, Images, Sparkles, Ticket, Route, Disc3, Settings2 } from "lucide-react";
 import { TetherProvider, useTether } from "./context/TetherContext";
 import AmbientBackground from "./components/AmbientBackground";
+import SettingsSheet from "./components/SettingsSheet";
 import AuthScreen from "./screens/AuthScreen";
 import PairingScreen from "./screens/PairingScreen";
 import PulseScreen from "./screens/PulseScreen";
@@ -11,18 +12,20 @@ import MemoriesScreen from "./screens/MemoriesScreen";
 import BridgeScreen from "./screens/BridgeScreen";
 import TokensScreen from "./screens/TokensScreen";
 import PathScreen from "./screens/PathScreen";
+import NeedleScreen from "./screens/NeedleScreen";
 import { haptic } from "./lib/haptics";
 
 const rooms = [
   { key: "chat", label: "chat", icon: MessageCircle, el: <ChatScreen /> },
   { key: "wall", label: "wall", icon: Images, el: <MemoriesScreen /> },
-  { key: "pulse", label: "pulse", icon: null, el: <PulseScreen /> },
   { key: "bridge", label: "bridge", icon: Sparkles, el: <BridgeScreen /> },
+  { key: "pulse", label: "pulse", icon: null, el: <PulseScreen /> },
+  { key: "needle", label: "needle", icon: Disc3, el: <NeedleScreen /> },
   { key: "tokens", label: "tokens", icon: Ticket, el: <TokensScreen /> },
   { key: "path", label: "path", icon: Route, el: <PathScreen /> },
 ] as const;
 
-const PULSE_INDEX = 2;
+const PULSE_INDEX = 3;
 
 /** Toast shown when the partner cheers a shared goal. */
 function CheerToast() {
@@ -58,6 +61,7 @@ function CheerToast() {
 function PairedApp() {
   const [index, setIndex] = useState(PULSE_INDEX);
   const [direction, setDirection] = useState(0);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const go = (next: number) => {
     if (next < 0 || next >= rooms.length || next === index) return;
@@ -74,6 +78,19 @@ function PairedApp() {
   return (
     <div className="relative h-full overflow-hidden">
       <CheerToast />
+
+      {/* settings — reachable from every room (name, untether, sign out) */}
+      <button
+        onClick={() => {
+          haptic("light");
+          setSettingsOpen(true);
+        }}
+        aria-label="settings"
+        className="glass fixed right-5 top-14 z-40 flex h-9 w-9 items-center justify-center rounded-full safe-top"
+      >
+        <Settings2 size={15} className="text-muted" />
+      </button>
+      <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <AnimatePresence mode="popLayout" custom={direction} initial={false}>
         <motion.div
           key={rooms[index].key}

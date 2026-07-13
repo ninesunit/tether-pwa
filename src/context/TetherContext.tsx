@@ -12,7 +12,14 @@ import {
 import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { haptic } from "../lib/haptics";
-import type { PresencePayload, Profile, SpaceState, Tether } from "../lib/types";
+import type {
+  LastLocation,
+  PresencePayload,
+  Profile,
+  SpaceState,
+  Tether,
+  TetherCore,
+} from "../lib/types";
 
 /**
  * Ambient connection states drive the mesh-gradient background:
@@ -52,6 +59,16 @@ interface TetherContextValue {
   setTogether: (on: boolean) => void;
   sendPulse: () => void;
   sendCheer: (text: string) => void;
+  /** Fire a raw broadcast event on the couple's channel (line/core events). */
+  broadcast: (event: string, payload: Record<string, unknown>) => void;
+  /** Listen for a raw broadcast event; returns an unsubscribe function. */
+  onBroadcast: (event: string, cb: (payload: Record<string, unknown>) => void) => () => void;
+  /** Resonance Core heat, with lazy decay already applied (0–100). */
+  heat: number;
+  addHeat: (amount: number) => void;
+  /** Live device position (when granted) and partner's last known position. */
+  myLocation: { lat: number; lng: number } | null;
+  partnerLocation: { lat: number; lng: number } | null;
   signUp: (email: string, password: string, name: string) => Promise<string | null>;
   signIn: (email: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
@@ -78,6 +95,13 @@ function haversineMeters(a: { lat: number; lng: number }, b: { lat: number; lng:
 
 const NEARBY_METERS = 250;
 
+/** 2 heat per hour since the last interaction — mirrors add_heat() in SQL. */
+function decayedHeat(core: TetherCore | null): number {
+  if (!core) return 50;
+  const hours = (Date.now() - new Date(core.last_interaction_at).getTime()) / 3_600_000;
+  return Math.max(0, Math.min(100, core.heat_level - Math.floor(hours * 2)));
+}
+
 export function TetherProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
@@ -92,11 +116,35 @@ export function TetherProvider({ children }: { children: ReactNode }) {
   const [lastPulseAt, setLastPulseAt] = useState<number | null>(null);
   const [lastCheer, setLastCheer] = useState<Cheer | null>(null);
   const [space, setSpace] = useState<SpaceState | null>(null);
+  const [core, setCore] = useState<TetherCore | null>(null);
+  const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [partnerLocation, setPartnerLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const myPositionRef = useRef<{ lat: number; lng: number } | null>(null);
   const togetherRef = useRef(false);
   const trackRef = useRef<(() => void) | null>(null);
+  const lastLocationUpsertRef = useRef(0);
+  const listenersRef = useRef(new Map<string, Set<(p: Record<string, unknown>) => void>>());
+
+  const emit = useCallback((event: string, payload: Record<string, unknown>) => {
+    listenersRef.current.get(event)?.forEach((cb) => cb(payload));
+  }, []);
+
+  const onBroadcast = useCallback(
+    (event: string, cb: (payload: Record<string, unknown>) => void) => {
+      let set = listenersRef.current.get(event);
+      if (!set) {
+        set = new Set();
+        listenersRef.current.set(event, set);
+      }
+      set.add(cb);
+      return () => {
+        set.delete(cb);
+      };
+    },
+    [],
+  );
 
   const userId = session?.user.id ?? null;
   const partnerId = useMemo(() => {
@@ -235,6 +283,53 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     };
   }, [tether]);
 
+  /* --------------------- resonance core heat + partner's last location */
+  useEffect(() => {
+    if (!tether?.partner_b || !partnerId) {
+      setCore(null);
+      setPartnerLocation(null);
+      return;
+    }
+    supabase
+      .from("tether_core")
+      .select("*")
+      .eq("tether_id", tether.id)
+      .maybeSingle()
+      .then(({ data }) => setCore((data as TetherCore) ?? null));
+    supabase
+      .from("last_locations")
+      .select("*")
+      .eq("user_id", partnerId)
+      .maybeSingle()
+      .then(({ data }) => {
+        const l = data as LastLocation | null;
+        setPartnerLocation(l ? { lat: l.lat, lng: l.lng } : null);
+      });
+    const ch = supabase
+      .channel(`core:${tether.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "tether_core", filter: `tether_id=eq.${tether.id}` },
+        (payload) => {
+          if (payload.eventType !== "DELETE") setCore(payload.new as TetherCore);
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "last_locations", filter: `user_id=eq.${partnerId}` },
+        (payload) => {
+          if (payload.eventType !== "DELETE") {
+            const l = payload.new as LastLocation;
+            setPartnerLocation({ lat: l.lat, lng: l.lng });
+          }
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(ch);
+    };
+  }, [tether, partnerId]);
+
   /* --------------------------------------- presence + pulse (broadcast) */
   useEffect(() => {
     if (!tether?.partner_b || !userId) return;
@@ -285,6 +380,9 @@ export function TetherProvider({ children }: { children: ReactNode }) {
         setLastCheer({ text: (payload as { text?: string })?.text ?? "", at: Date.now() });
         haptic("success");
       })
+      .on("broadcast", { event: "line" }, ({ payload }) => emit("line", payload ?? {}))
+      .on("broadcast", { event: "line_snap" }, ({ payload }) => emit("line_snap", payload ?? {}))
+      .on("broadcast", { event: "core_touch" }, ({ payload }) => emit("core_touch", payload ?? {}))
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") await track();
       });
@@ -298,8 +396,18 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     if ("geolocation" in navigator) {
       watchId = navigator.geolocation.watchPosition(
         (pos) => {
-          myPositionRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          myPositionRef.current = loc;
+          setMyLocation(loc);
           track();
+          // Persist the last known position for the compass (max every 2 min).
+          if (Date.now() - lastLocationUpsertRef.current > 120_000) {
+            lastLocationUpsertRef.current = Date.now();
+            supabase
+              .from("last_locations")
+              .upsert({ user_id: userId, tether_id: tether.id, lat: loc.lat, lng: loc.lng, updated_at: new Date().toISOString() })
+              .then(() => {});
+          }
         },
         () => {
           /* permission denied — presence still works, proximity doesn't */
@@ -317,12 +425,29 @@ export function TetherProvider({ children }: { children: ReactNode }) {
       setPartnerNear(false);
       setPartnerTogether(false);
     };
-  }, [tether, userId]);
+  }, [tether, userId, emit]);
 
   /* ------------------------------------------------------------- actions */
+  const addHeat = useCallback(
+    (amount: number) => {
+      if (!tether?.partner_b) return;
+      supabase
+        .rpc("add_heat", { t: tether.id, amount })
+        .then(({ data }) => {
+          if (data) setCore(data as TetherCore);
+        });
+    },
+    [tether],
+  );
+
   const sendPulse = useCallback(() => {
     haptic("medium");
     channelRef.current?.send({ type: "broadcast", event: "pulse", payload: {} });
+    addHeat(3);
+  }, [addHeat]);
+
+  const broadcast = useCallback((event: string, payload: Record<string, unknown>) => {
+    channelRef.current?.send({ type: "broadcast", event, payload });
   }, []);
 
   const sendCheer = useCallback((text: string) => {
@@ -441,6 +566,12 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     setTogether,
     sendPulse,
     sendCheer,
+    broadcast,
+    onBroadcast,
+    heat: decayedHeat(core),
+    addHeat,
+    myLocation,
+    partnerLocation,
     signUp,
     signIn,
     signOut,

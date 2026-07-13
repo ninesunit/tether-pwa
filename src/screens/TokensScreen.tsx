@@ -4,6 +4,7 @@ import { Plus, Sparkles } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { useTether } from "../context/TetherContext";
 import { haptic } from "../lib/haptics";
+import Fab from "../components/Fab";
 import type { Token } from "../lib/types";
 
 const SUGGESTIONS = [
@@ -224,18 +225,7 @@ export default function TokensScreen() {
         )}
       </AnimatePresence>
 
-      {!minting && (
-        <motion.button
-          whileTap={{ scale: 0.94 }}
-          onClick={() => {
-            haptic("light");
-            setMinting(true);
-          }}
-          className="glass-strong fixed bottom-24 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full px-6 py-3 text-sm text-cream safe-bottom"
-        >
-          <Plus size={16} className="text-blush" /> mint a token
-        </motion.button>
-      )}
+      {!minting && <Fab icon={Plus} label="mint a token" onClick={() => setMinting(true)} />}
     </div>
   );
 }

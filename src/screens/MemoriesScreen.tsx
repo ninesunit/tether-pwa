@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Heart, ImagePlus } from "lucide-react";
+import { Heart, ImagePlus, Trash2 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { useTether } from "../context/TetherContext";
 import { haptic } from "../lib/haptics";
+import Fab from "../components/Fab";
 import type { Memory } from "../lib/types";
 
 function publicUrl(path: string) {
@@ -21,6 +22,7 @@ export default function MemoriesScreen() {
   const [burstId, setBurstId] = useState<string | null>(null);
   const [pending, setPending] = useState<{ file: File; preview: string } | null>(null);
   const [caption, setCaption] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -75,6 +77,20 @@ export default function MemoriesScreen() {
     setUploading(false);
   };
 
+  const removeMemory = async (m: Memory) => {
+    if (confirmDeleteId !== m.id) {
+      haptic("light");
+      setConfirmDeleteId(m.id);
+      window.setTimeout(() => setConfirmDeleteId((id) => (id === m.id ? null : id)), 2800);
+      return;
+    }
+    haptic("heavy");
+    setConfirmDeleteId(null);
+    setMemories((ms) => ms.filter((x) => x.id !== m.id));
+    await supabase.from("memories").delete().eq("id", m.id);
+    await supabase.storage.from("memories").remove([m.storage_path]);
+  };
+
   const toggleHeart = async (m: Memory) => {
     haptic(m.hearted ? "light" : "medium");
     if (!m.hearted) setBurstId(m.id);
@@ -122,6 +138,23 @@ export default function MemoriesScreen() {
             >
               <Heart size={15} className={m.hearted ? "fill-blush text-blush" : "text-muted"} />
             </button>
+            <button
+              onClick={() => removeMemory(m)}
+              className={`absolute -left-2 -top-2 rounded-full p-2 transition-colors ${
+                confirmDeleteId === m.id ? "bg-burgundy" : "bg-ember-950/90"
+              }`}
+              aria-label={confirmDeleteId === m.id ? "Tap again to delete" : "Delete this memory"}
+            >
+              <Trash2
+                size={13}
+                className={confirmDeleteId === m.id ? "text-cream" : "text-muted/80"}
+              />
+            </button>
+            {confirmDeleteId === m.id && (
+              <span className="absolute -top-8 left-0 rounded-full bg-burgundy px-2.5 py-1 text-[10px] text-cream">
+                tap again to let it go
+              </span>
+            )}
             <AnimatePresence>
               {burstId === m.id && (
                 <motion.div
@@ -214,13 +247,7 @@ export default function MemoriesScreen() {
       </AnimatePresence>
 
       {!pending && (
-        <motion.button
-          whileTap={{ scale: 0.94 }}
-          onClick={() => fileRef.current?.click()}
-          className="glass-strong fixed bottom-24 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full px-6 py-3 text-sm text-cream safe-bottom"
-        >
-          <ImagePlus size={16} className="text-blush" /> pin a memory
-        </motion.button>
+        <Fab icon={ImagePlus} label="pin a memory" onClick={() => fileRef.current?.click()} />
       )}
     </div>
   );
