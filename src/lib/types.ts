@@ -12,7 +12,8 @@ export interface Tether {
   created_at: string;
 }
 
-export interface Letter {
+/** Instant chat messages (table kept as `letters` for continuity). */
+export interface Message {
   id: string;
   tether_id: string;
   sender_id: string;
@@ -68,10 +69,34 @@ export interface Goal {
   created_at: string;
 }
 
+export interface SpaceState {
+  tether_id: string;
+  mood: string;
+  updated_by: string | null;
+  updated_at: string;
+}
+
 /** Payload each client tracks into the shared Presence channel. */
-export interface PresenceState {
+export interface PresencePayload {
   user_id: string;
   lat: number | null;
   lng: number | null;
+  together: boolean;
   online_at: string;
+}
+
+/** The shared moods that tint both partners' ambient space. */
+export const MOODS = [
+  { key: "calm", label: "calm", color: "#8fa8c9" },
+  { key: "cozy", label: "cozy", color: "#f2b263" },
+  { key: "missing", label: "missing you", color: "#f4a6bd" },
+  { key: "playful", label: "playful", color: "#b78df2" },
+  { key: "tired", label: "tired", color: "#7d8a99" },
+  { key: "loved", label: "loved", color: "#e86a8a" },
+] as const;
+
+export type MoodKey = (typeof MOODS)[number]["key"];
+
+export function moodColor(key: string): string {
+  return MOODS.find((m) => m.key === key)?.color ?? "#8fa8c9";
 }

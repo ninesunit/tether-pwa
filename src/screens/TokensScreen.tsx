@@ -16,12 +16,13 @@ const SUGGESTIONS = [
 ];
 
 /**
- * Digital Tokens — playful redeemable gestures rendered as physical cards.
- * Redeeming fires a pulse back to the sender.
+ * Digital Tokens — playful redeemable gestures rendered as ticket-like
+ * cards. Redeeming fires a pulse back to the sender.
  */
 export default function TokensScreen() {
-  const { tether, session, sendPulse } = useTether();
+  const { tether, session, partnerProfile, sendPulse } = useTether();
   const [tokens, setTokens] = useState<Token[]>([]);
+  const [tab, setTab] = useState<"wallet" | "given">("wallet");
   const [minting, setMinting] = useState(false);
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
@@ -73,58 +74,103 @@ export default function TokensScreen() {
     sendPulse(); // let the sender feel it being cashed in
   };
 
-  const wallet = tokens.filter((t) => t.sender_id !== me); // received
-  const given = tokens.filter((t) => t.sender_id === me);
-
-  const Card = ({ t, mine }: { t: Token; mine: boolean }) => (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 14 }}
-      animate={{ opacity: 1, y: 0 }}
-      className={`relative overflow-hidden rounded-2xl p-5 ${
-        t.redeemed_at ? "bg-ember-900/50 opacity-60" : "bg-gradient-to-br from-burgundy to-ember-800"
-      }`}
-      style={{ boxShadow: t.redeemed_at ? "none" : "0 12px 30px -12px rgba(110,30,60,0.6)" }}
-    >
-      <Sparkles size={14} className="text-amber-glow/70" />
-      <p className="mt-3 font-serif text-lg text-cream">{t.title}</p>
-      {t.note && <p className="mt-1 text-xs text-blush-soft">{t.note}</p>}
-      <div className="mt-4 flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-widest text-muted">
-          {t.redeemed_at ? "redeemed" : mine ? "given" : "yours to spend"}
-        </span>
-        {!t.redeemed_at && !mine && (
-          <motion.button
-            whileTap={{ scale: 0.93 }}
-            onClick={() => redeem(t)}
-            className="rounded-full bg-void/40 px-4 py-1.5 text-xs text-cream"
-          >
-            redeem
-          </motion.button>
-        )}
-      </div>
-    </motion.div>
-  );
+  const shown = tokens.filter((t) => (tab === "wallet" ? t.sender_id !== me : t.sender_id === me));
 
   return (
-    <div className="h-full overflow-y-auto px-6 pt-24 pb-36 safe-top">
-      <h2 className="font-serif text-2xl text-cream">tokens</h2>
-      <p className="mt-1 text-xs text-muted">small promises, redeemable anytime.</p>
+    <div className="h-full overflow-y-auto px-6 pb-44 safe-top">
+      <header className="pt-16">
+        <h2 className="font-serif text-3xl text-cream">tokens</h2>
+        <p className="mt-1 text-xs text-muted">small promises, redeemable anytime.</p>
+      </header>
 
-      <p className="mt-8 text-[11px] uppercase tracking-widest text-muted">your wallet</p>
-      <div className="mt-3 space-y-4">
-        {wallet.length === 0 && <p className="text-sm text-muted">nothing to spend — yet.</p>}
-        {wallet.map((t) => (
-          <Card key={t.id} t={t} mine={false} />
+      {/* tabs */}
+      <div className="glass mt-6 flex rounded-full p-1">
+        {(["wallet", "given"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => {
+              setTab(t);
+              haptic("light");
+            }}
+            className="relative flex-1 rounded-full py-2 text-sm"
+          >
+            {tab === t && (
+              <motion.span
+                layoutId="token-tab"
+                className="absolute inset-0 rounded-full bg-burgundy/70"
+                transition={{ type: "spring", damping: 26, stiffness: 300 }}
+              />
+            )}
+            <span className={`relative ${tab === t ? "text-cream" : "text-muted"}`}>
+              {t === "wallet" ? "your wallet" : "given by you"}
+            </span>
+          </button>
         ))}
       </div>
 
-      <p className="mt-10 text-[11px] uppercase tracking-widest text-muted">given by you</p>
-      <div className="mt-3 space-y-4">
-        {given.length === 0 && <p className="text-sm text-muted">mint one below.</p>}
-        {given.map((t) => (
-          <Card key={t.id} t={t} mine />
-        ))}
+      <div className="mt-6 space-y-4">
+        <AnimatePresence initial={false} mode="popLayout">
+          {shown.map((t) => {
+            const mine = t.sender_id === me;
+            return (
+              <motion.div
+                key={t.id}
+                layout
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className={`relative overflow-hidden rounded-2xl ${
+                  t.redeemed_at ? "glass opacity-55" : "card-gradient"
+                }`}
+                style={
+                  t.redeemed_at
+                    ? undefined
+                    : { boxShadow: "0 16px 36px -14px rgba(122,34,68,0.65)" }
+                }
+              >
+                {/* ticket notches */}
+                <span className="absolute -left-2.5 top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-void" />
+                <span className="absolute -right-2.5 top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-void" />
+                <div className="p-5">
+                  <div className="flex items-center justify-between">
+                    <Sparkles size={14} className="text-amber-glow/80" />
+                    <span className="text-[10px] uppercase tracking-widest text-muted">
+                      {t.redeemed_at
+                        ? "redeemed"
+                        : mine
+                          ? `for ${partnerProfile?.display_name ?? "them"}`
+                          : "yours to spend"}
+                    </span>
+                  </div>
+                  <p className="mt-3 font-serif text-xl text-cream">{t.title}</p>
+                  {t.note && <p className="mt-1 text-xs text-blush-soft">{t.note}</p>}
+                  <div className="mt-4 flex items-center justify-between border-t border-dashed border-blush/20 pt-3.5">
+                    <span className="text-[10px] text-muted">
+                      {new Date(t.created_at).toLocaleDateString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </span>
+                    {!t.redeemed_at && !mine && (
+                      <motion.button
+                        whileTap={{ scale: 0.93 }}
+                        onClick={() => redeem(t)}
+                        className="rounded-full bg-void/45 px-4 py-1.5 text-xs text-cream"
+                      >
+                        redeem
+                      </motion.button>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+        {shown.length === 0 && (
+          <p className="mt-14 text-center text-sm text-muted">
+            {tab === "wallet" ? "nothing to spend — yet." : "mint one below."}
+          </p>
+        )}
       </div>
 
       <AnimatePresence>
@@ -134,28 +180,28 @@ export default function TokensScreen() {
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
-            className="fixed inset-x-0 bottom-0 z-10 rounded-t-[2rem] bg-ember-950/95 p-6 pb-10 backdrop-blur-xl safe-bottom"
+            className="glass-strong fixed inset-x-0 bottom-0 z-40 rounded-t-[2rem] p-6 pb-10 safe-bottom"
           >
-            <p className="font-serif text-lg text-cream">mint a token</p>
+            <p className="font-serif text-xl text-cream">mint a token</p>
             <input
               autoFocus
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="what are you promising?"
-              className="mt-4 w-full rounded-2xl bg-ember-900/70 px-5 py-4 text-cream placeholder-muted outline-none"
+              className="field mt-4 w-full rounded-2xl px-5 py-4 text-cream placeholder-muted outline-none"
             />
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder="a note (optional)"
-              className="mt-3 w-full rounded-2xl bg-ember-900/70 px-5 py-4 text-cream placeholder-muted outline-none"
+              className="field mt-3 w-full rounded-2xl px-5 py-4 text-cream placeholder-muted outline-none"
             />
             <div className="mt-4 flex flex-wrap gap-2">
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s}
                   onClick={() => setTitle(s)}
-                  className="rounded-full bg-ember-800/80 px-3 py-1.5 text-xs text-blush-soft"
+                  className="glass rounded-full px-3 py-1.5 text-xs text-blush-soft"
                 >
                   {s}
                 </button>
@@ -169,7 +215,7 @@ export default function TokensScreen() {
                 whileTap={{ scale: 0.95 }}
                 disabled={!title.trim()}
                 onClick={mint}
-                className="rounded-full bg-burgundy px-6 py-2.5 text-sm text-cream disabled:opacity-40"
+                className="btn-warm rounded-full px-6 py-2.5 text-sm text-cream disabled:opacity-40"
               >
                 mint &amp; give
               </motion.button>
@@ -185,9 +231,9 @@ export default function TokensScreen() {
             haptic("light");
             setMinting(true);
           }}
-          className="fixed bottom-28 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-ember-800/90 px-6 py-3 text-sm text-cream backdrop-blur safe-bottom"
+          className="glass-strong fixed bottom-24 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full px-6 py-3 text-sm text-cream safe-bottom"
         >
-          <Plus size={16} /> mint a token
+          <Plus size={16} className="text-blush" /> mint a token
         </motion.button>
       )}
     </div>

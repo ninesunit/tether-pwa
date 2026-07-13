@@ -12,7 +12,7 @@ import {
 import type { RealtimeChannel, Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { haptic } from "../lib/haptics";
-import type { PresenceState, Profile, Tether } from "../lib/types";
+import type { PresencePayload, Profile, SpaceState, Tether } from "../lib/types";
 
 /**
  * Ambient connection states drive the mesh-gradient background:
@@ -24,22 +24,41 @@ export type Ambience = "dormant" | "present" | "near";
 
 type Phase = "loading" | "signed-out" | "unpaired" | "paired";
 
+export interface Cheer {
+  text: string;
+  at: number;
+}
+
 interface TetherContextValue {
   phase: Phase;
   session: Session | null;
   profile: Profile | null;
+  partnerProfile: Profile | null;
   tether: Tether | null;
   partnerId: string | null;
   ambience: Ambience;
   partnerOnline: boolean;
   /** Timestamp of the last pulse received from the partner (for the ripple). */
   lastPulseAt: number | null;
+  /** Last "cheer" broadcast received from the partner. */
+  lastCheer: Cheer | null;
+  /** Shared mood of the couple's space. */
+  mood: string;
+  moodSetByPartner: boolean;
+  setMood: (mood: string) => Promise<void>;
+  /** "Sitting together" — both partners opted into the shared ambient. */
+  together: boolean;
+  bothTogether: boolean;
+  setTogether: (on: boolean) => void;
   sendPulse: () => void;
+  sendCheer: (text: string) => void;
   signUp: (email: string, password: string, name: string) => Promise<string | null>;
   signIn: (email: string, password: string) => Promise<string | null>;
   signOut: () => Promise<void>;
-  createTether: () => Promise<Tether | null>;
+  updateName: (name: string) => Promise<void>;
+  createTether: () => Promise<string | null>;
   joinTether: (code: string) => Promise<string | null>;
+  untether: () => Promise<void>;
   refreshTether: () => Promise<void>;
 }
 
@@ -63,18 +82,25 @@ export function TetherProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [partnerProfile, setPartnerProfile] = useState<Profile | null>(null);
   const [tether, setTether] = useState<Tether | null>(null);
   const [tetherLoaded, setTetherLoaded] = useState(false);
   const [partnerOnline, setPartnerOnline] = useState(false);
   const [partnerNear, setPartnerNear] = useState(false);
+  const [partnerTogether, setPartnerTogether] = useState(false);
+  const [together, setTogetherState] = useState(false);
   const [lastPulseAt, setLastPulseAt] = useState<number | null>(null);
+  const [lastCheer, setLastCheer] = useState<Cheer | null>(null);
+  const [space, setSpace] = useState<SpaceState | null>(null);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const myPositionRef = useRef<{ lat: number; lng: number } | null>(null);
+  const togetherRef = useRef(false);
+  const trackRef = useRef<(() => void) | null>(null);
 
   const userId = session?.user.id ?? null;
   const partnerId = useMemo(() => {
-    if (!tether || !userId) return null;
+    if (!tether?.partner_b || !userId) return null;
     return tether.partner_a === userId ? tether.partner_b : tether.partner_a;
   }, [tether, userId]);
 
@@ -90,7 +116,10 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  /* ------------------------------------------------- profile + tether row */
+  /* ------------------------------------------------- profile + tether row
+     A user can transiently own multiple tether rows (created a code, then
+     joined a partner's). Fetch them all and prefer the completed pair —
+     this is what previously made one side look "untethered". */
   const refreshTether = useCallback(async () => {
     if (!userId) {
       setProfile(null);
@@ -98,16 +127,17 @@ export function TetherProvider({ children }: { children: ReactNode }) {
       setTetherLoaded(false);
       return;
     }
-    const [{ data: prof }, { data: pair }] = await Promise.all([
+    const [{ data: prof }, { data: rows }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", userId).maybeSingle(),
       supabase
         .from("tethers")
         .select("*")
         .or(`partner_a.eq.${userId},partner_b.eq.${userId}`)
-        .maybeSingle(),
+        .order("created_at", { ascending: false }),
     ]);
     setProfile((prof as Profile) ?? null);
-    setTether((pair as Tether) ?? null);
+    const all = (rows as Tether[]) ?? [];
+    setTether(all.find((r) => r.partner_b) ?? all[0] ?? null);
     setTetherLoaded(true);
   }, [userId]);
 
@@ -115,15 +145,89 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     refreshTether();
   }, [refreshTether]);
 
-  /* -------------------------- while waiting for a partner, watch the row */
+  // Re-check whenever the app returns to the foreground (iOS PWAs sleep hard).
   useEffect(() => {
-    if (!tether || tether.partner_b) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshTether();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [refreshTether]);
+
+  /* -------------------------------------------------------- partner info */
+  useEffect(() => {
+    if (!partnerId) {
+      setPartnerProfile(null);
+      return;
+    }
+    supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", partnerId)
+      .maybeSingle()
+      .then(({ data }) => setPartnerProfile((data as Profile) ?? null));
+  }, [partnerId]);
+
+  /* ------------------- watch the tether row: pairing + partner untethers */
+  useEffect(() => {
+    if (!tether || !userId) return;
     const ch = supabase
       .channel(`tether-row:${tether.id}`)
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "tethers", filter: `id=eq.${tether.id}` },
-        (payload) => setTether(payload.new as Tether),
+        (payload) => {
+          setTether(payload.new as Tether);
+          haptic("success");
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "tethers", filter: `id=eq.${tether.id}` },
+        () => {
+          setTether(null);
+          setSpace(null);
+          refreshTether();
+        },
+      )
+      .subscribe();
+
+    // Belt & suspenders while waiting for a partner: realtime can drop on
+    // mobile Safari, so poll gently until the pair completes.
+    let poll: number | null = null;
+    if (!tether.partner_b) {
+      poll = window.setInterval(refreshTether, 10_000);
+    }
+    return () => {
+      supabase.removeChannel(ch);
+      if (poll !== null) clearInterval(poll);
+    };
+  }, [tether, userId, refreshTether]);
+
+  /* ----------------------------------------------- shared space (mood) */
+  useEffect(() => {
+    if (!tether?.partner_b) {
+      setSpace(null);
+      return;
+    }
+    supabase
+      .from("space_state")
+      .select("*")
+      .eq("tether_id", tether.id)
+      .maybeSingle()
+      .then(({ data }) => setSpace((data as SpaceState) ?? null));
+    const ch = supabase
+      .channel(`space:${tether.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "space_state", filter: `tether_id=eq.${tether.id}` },
+        (payload) => {
+          if (payload.eventType !== "DELETE") setSpace(payload.new as SpaceState);
+        },
       )
       .subscribe();
     return () => {
@@ -140,24 +244,34 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     });
     channelRef.current = channel;
 
+    const track = () =>
+      channel.track({
+        user_id: userId,
+        lat: myPositionRef.current?.lat ?? null,
+        lng: myPositionRef.current?.lng ?? null,
+        together: togetherRef.current,
+        online_at: new Date().toISOString(),
+      } satisfies PresencePayload);
+
     const evaluatePresence = () => {
-      const state = channel.presenceState<PresenceState>();
+      const state = channel.presenceState<PresencePayload>();
       const others = Object.keys(state).filter((k) => k !== userId);
       const online = others.length > 0;
       setPartnerOnline(online);
 
       let near = false;
+      let ptogether = false;
       const mine = myPositionRef.current;
-      if (online && mine) {
-        for (const key of others) {
-          for (const meta of state[key]) {
-            if (meta.lat != null && meta.lng != null) {
-              near ||= haversineMeters(mine, { lat: meta.lat, lng: meta.lng }) < NEARBY_METERS;
-            }
+      for (const key of others) {
+        for (const meta of state[key]) {
+          ptogether ||= !!meta.together;
+          if (mine && meta.lat != null && meta.lng != null) {
+            near ||= haversineMeters(mine, { lat: meta.lat, lng: meta.lng }) < NEARBY_METERS;
           }
         }
       }
-      setPartnerNear(near);
+      setPartnerNear(online && near);
+      setPartnerTogether(online && ptogether);
     };
 
     channel
@@ -167,16 +281,16 @@ export function TetherProvider({ children }: { children: ReactNode }) {
         setLastPulseAt(Date.now());
         haptic("pulse");
       })
+      .on("broadcast", { event: "cheer" }, ({ payload }) => {
+        setLastCheer({ text: (payload as { text?: string })?.text ?? "", at: Date.now() });
+        haptic("success");
+      })
       .subscribe(async (status) => {
-        if (status === "SUBSCRIBED") {
-          await channel.track({
-            user_id: userId,
-            lat: myPositionRef.current?.lat ?? null,
-            lng: myPositionRef.current?.lng ?? null,
-            online_at: new Date().toISOString(),
-          } satisfies PresenceState);
-        }
+        if (status === "SUBSCRIBED") await track();
       });
+
+    // expose so setTogether can re-track
+    trackRef.current = track;
 
     // Coarse position for the "near each other" glow. Optional — the app
     // degrades gracefully if the user never grants location.
@@ -184,16 +298,8 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     if ("geolocation" in navigator) {
       watchId = navigator.geolocation.watchPosition(
         (pos) => {
-          myPositionRef.current = {
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-          };
-          channel.track({
-            user_id: userId,
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            online_at: new Date().toISOString(),
-          } satisfies PresenceState);
+          myPositionRef.current = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          track();
         },
         () => {
           /* permission denied — presence still works, proximity doesn't */
@@ -206,8 +312,10 @@ export function TetherProvider({ children }: { children: ReactNode }) {
       if (watchId !== null) navigator.geolocation.clearWatch(watchId);
       supabase.removeChannel(channel);
       channelRef.current = null;
+      trackRef.current = null;
       setPartnerOnline(false);
       setPartnerNear(false);
+      setPartnerTogether(false);
     };
   }, [tether, userId]);
 
@@ -216,6 +324,29 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     haptic("medium");
     channelRef.current?.send({ type: "broadcast", event: "pulse", payload: {} });
   }, []);
+
+  const sendCheer = useCallback((text: string) => {
+    haptic("light");
+    channelRef.current?.send({ type: "broadcast", event: "cheer", payload: { text } });
+  }, []);
+
+  const setTogether = useCallback((on: boolean) => {
+    togetherRef.current = on;
+    setTogetherState(on);
+    trackRef.current?.();
+  }, []);
+
+  const setMood = useCallback(
+    async (mood: string) => {
+      if (!tether || !userId) return;
+      haptic("light");
+      setSpace({ tether_id: tether.id, mood, updated_by: userId, updated_at: new Date().toISOString() });
+      await supabase
+        .from("space_state")
+        .upsert({ tether_id: tether.id, mood, updated_by: userId, updated_at: new Date().toISOString() });
+    },
+    [tether, userId],
+  );
 
   const signUp = useCallback(async (email: string, password: string, name: string) => {
     const { data, error } = await supabase.auth.signUp({ email, password });
@@ -236,24 +367,26 @@ export function TetherProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
+    setTether(null);
+    setSpace(null);
   }, []);
 
+  const updateName = useCallback(
+    async (name: string) => {
+      if (!userId || !name.trim()) return;
+      await supabase.from("profiles").update({ display_name: name.trim() }).eq("id", userId);
+      setProfile((p) => (p ? { ...p, display_name: name.trim() } : p));
+    },
+    [userId],
+  );
+
+  /** Server-side: reuses a pending code, refuses if already paired. */
   const createTether = useCallback(async () => {
-    if (!userId) return null;
-    // Human-friendly one-time code, e.g. "EMBER-4821".
-    const words = ["EMBER", "BLUSH", "DUSK", "VELVET", "AMBER", "MOTH", "PLUM", "WREN"];
-    const code = `${words[Math.floor(Math.random() * words.length)]}-${Math.floor(
-      1000 + Math.random() * 9000,
-    )}`;
-    const { data, error } = await supabase
-      .from("tethers")
-      .insert({ code, partner_a: userId })
-      .select()
-      .single();
-    if (error || !data) return null;
-    setTether(data as Tether);
-    return data as Tether;
-  }, [userId]);
+    const { data, error } = await supabase.rpc("create_tether");
+    if (error) return error.message;
+    if (data) setTether(data as Tether);
+    return null;
+  }, []);
 
   const joinTether = useCallback(
     async (code: string) => {
@@ -268,6 +401,14 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     },
     [userId, refreshTether],
   );
+
+  const untether = useCallback(async () => {
+    await supabase.rpc("untether");
+    setTether(null);
+    setSpace(null);
+    setPartnerProfile(null);
+    await refreshTether();
+  }, [refreshTether]);
 
   const ambience: Ambience = partnerNear ? "near" : partnerOnline ? "present" : "dormant";
 
@@ -285,17 +426,28 @@ export function TetherProvider({ children }: { children: ReactNode }) {
     phase,
     session,
     profile,
+    partnerProfile,
     tether,
     partnerId,
     ambience,
     partnerOnline,
     lastPulseAt,
+    lastCheer,
+    mood: space?.mood ?? "calm",
+    moodSetByPartner: !!space && space.updated_by !== userId,
+    setMood,
+    together,
+    bothTogether: together && partnerTogether,
+    setTogether,
     sendPulse,
+    sendCheer,
     signUp,
     signIn,
     signOut,
+    updateName,
     createTether,
     joinTether,
+    untether,
     refreshTether,
   };
 

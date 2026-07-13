@@ -2,18 +2,20 @@
 
 @theme {
   /* The "Partner" palette — deep warm dark, burgundies, ambers, blushes. */
-  --color-void: #0a0508;
-  --color-ember-950: #170a10;
-  --color-ember-900: #241019;
-  --color-ember-800: #3a1a28;
-  --color-burgundy: #6e1e3c;
-  --color-blush: #e8a4b8;
-  --color-blush-soft: #c98da0;
-  --color-amber-glow: #f0b46a;
-  --color-cream: #f5ece4;
-  --color-muted: #8a7580;
+  --color-void: #0b060a;
+  --color-ember-950: #180b12;
+  --color-ember-900: #26121c;
+  --color-ember-800: #3c1c2c;
+  --color-burgundy: #7a2244;
+  --color-plum: #4d1d3f;
+  --color-blush: #f4a6bd;
+  --color-blush-soft: #cf93a6;
+  --color-amber-glow: #f2b263;
+  --color-cream: #f7eee7;
+  --color-muted: #94798a;
 
-  --font-serif: "Georgia", "Times New Roman", serif;
+  --font-serif: "Fraunces", "Georgia", serif;
+  --font-sans: "Outfit", -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 html,
@@ -26,8 +28,9 @@ body,
 body {
   background: var(--color-void);
   color: var(--color-cream);
-  font-family:
-    -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
+  font-weight: 350;
+  letter-spacing: 0.01em;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   -webkit-user-select: none;
@@ -39,6 +42,7 @@ input,
 textarea {
   -webkit-user-select: text;
   user-select: text;
+  font-family: var(--font-sans);
 }
 
 /* Hide scrollbars everywhere — this app has no visible chrome. */
@@ -54,4 +58,59 @@ textarea {
 }
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 12px);
+}
+
+/* ---- shared surfaces ------------------------------------------------ */
+
+.glass {
+  background: rgba(38, 18, 28, 0.55);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(244, 166, 189, 0.09);
+}
+
+.glass-strong {
+  background: rgba(24, 11, 18, 0.88);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border: 1px solid rgba(244, 166, 189, 0.12);
+}
+
+.card-gradient {
+  background: linear-gradient(140deg, rgba(122, 34, 68, 0.85), rgba(77, 29, 63, 0.9));
+  border: 1px solid rgba(244, 166, 189, 0.14);
+}
+
+.field {
+  background: rgba(38, 18, 28, 0.65);
+  border: 1px solid rgba(244, 166, 189, 0.08);
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+.field:focus-within,
+.field:focus {
+  border-color: rgba(244, 166, 189, 0.3);
+  background: rgba(60, 28, 44, 0.6);
+}
+
+.btn-warm {
+  background: linear-gradient(135deg, #8a2a4e, #5c2148);
+  border: 1px solid rgba(244, 166, 189, 0.18);
+  box-shadow: 0 10px 30px -12px rgba(138, 42, 78, 0.7);
+}
+
+.text-glow {
+  text-shadow: 0 0 24px rgba(244, 166, 189, 0.35);
+}
+
+/* dreamy polaroid finish for memories */
+.polaroid-photo {
+  filter: contrast(1.05) saturate(0.82) sepia(0.14) brightness(1.02);
+}
+
+.eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  font-weight: 500;
 }

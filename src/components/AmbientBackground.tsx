@@ -1,15 +1,17 @@
 import { motion } from "framer-motion";
 import { useTether, type Ambience } from "../context/TetherContext";
+import { moodColor } from "../lib/types";
 
 /**
  * The living background. A blurred mesh of soft radial blobs that slowly
  * drift, whose palette answers the partner's presence:
  *   dormant → cold charcoal/slate, present → warm amber, near → glowing blush.
+ * A fourth blob always carries the couple's shared mood color.
  */
 const palettes: Record<Ambience, [string, string, string]> = {
-  dormant: ["#1c1a24", "#141820", "#0f0d14"],
-  present: ["#5c3318", "#6e1e3c", "#2a1410"],
-  near: ["#8a2c50", "#c2703a", "#4a1a30"],
+  dormant: ["#1e1b26", "#151922", "#100e16"],
+  present: ["#61361a", "#7a2244", "#2c1511"],
+  near: ["#92305a", "#c2703a", "#4e1c33"],
 };
 
 const blobs = [
@@ -19,7 +21,7 @@ const blobs = [
 ];
 
 export default function AmbientBackground() {
-  const { ambience } = useTether();
+  const { ambience, mood } = useTether();
   const colors = palettes[ambience];
 
   return (
@@ -48,8 +50,24 @@ export default function AmbientBackground() {
           }}
         />
       ))}
+      {/* the shared mood, breathing at the horizon */}
+      <motion.div
+        className="absolute rounded-full"
+        style={{
+          width: "80vmax",
+          height: "40vmax",
+          left: "10%",
+          bottom: "-25vmax",
+          filter: "blur(110px)",
+        }}
+        animate={{ backgroundColor: moodColor(mood), opacity: [0.14, 0.22, 0.14] }}
+        transition={{
+          backgroundColor: { duration: 3 },
+          opacity: { duration: 9, repeat: Infinity, ease: "easeInOut" },
+        }}
+      />
       {/* fine grain of darkness so content always stays readable */}
-      <div className="absolute inset-0 bg-void/40" />
+      <div className="absolute inset-0 bg-void/45" />
     </div>
   );
 }

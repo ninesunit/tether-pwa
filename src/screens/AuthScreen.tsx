@@ -23,20 +23,34 @@ export default function AuthScreen() {
   };
 
   return (
-    <div className="flex h-full flex-col items-center justify-center px-10 safe-top safe-bottom">
+    <div className="flex h-full flex-col items-center justify-center px-9 safe-top safe-bottom">
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 1.2, ease: "easeOut" }}
         className="w-full max-w-sm"
       >
-        <h1 className="font-serif text-4xl tracking-wide text-cream">tether</h1>
-        <p className="mt-2 text-sm text-muted">a quiet space for two.</p>
+        {/* wordmark */}
+        <div className="flex items-center gap-4">
+          <motion.span
+            className="block h-11 w-11 rounded-full"
+            style={{
+              background:
+                "radial-gradient(circle at 35% 30%, #c65a82 0%, #7a2244 60%, #3c1c2c 100%)",
+            }}
+            animate={{ boxShadow: ["0 0 18px 2px rgba(244,166,189,0.25)", "0 0 30px 8px rgba(244,166,189,0.4)", "0 0 18px 2px rgba(244,166,189,0.25)"] }}
+            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+          />
+          <div>
+            <h1 className="text-glow font-serif text-4xl tracking-wide text-cream">tether</h1>
+            <p className="mt-0.5 text-sm text-muted">a quiet space for two.</p>
+          </div>
+        </div>
 
-        <div className="mt-12 space-y-4">
+        <div className="mt-12 space-y-3.5">
           {mode === "up" && (
             <input
-              className="w-full rounded-2xl bg-ember-900/70 px-5 py-4 text-cream placeholder-muted outline-none focus:bg-ember-800/70 transition-colors"
+              className="field w-full rounded-2xl px-5 py-4 text-cream placeholder-muted outline-none"
               placeholder="your name"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -44,7 +58,7 @@ export default function AuthScreen() {
             />
           )}
           <input
-            className="w-full rounded-2xl bg-ember-900/70 px-5 py-4 text-cream placeholder-muted outline-none focus:bg-ember-800/70 transition-colors"
+            className="field w-full rounded-2xl px-5 py-4 text-cream placeholder-muted outline-none"
             placeholder="email"
             type="email"
             value={email}
@@ -52,7 +66,7 @@ export default function AuthScreen() {
             autoComplete="email"
           />
           <input
-            className="w-full rounded-2xl bg-ember-900/70 px-5 py-4 text-cream placeholder-muted outline-none focus:bg-ember-800/70 transition-colors"
+            className="field w-full rounded-2xl px-5 py-4 text-cream placeholder-muted outline-none"
             placeholder="password"
             type="password"
             value={password}
@@ -64,7 +78,7 @@ export default function AuthScreen() {
             whileTap={{ scale: 0.97 }}
             disabled={busy || !email || !password || (mode === "up" && !name)}
             onClick={submit}
-            className="w-full rounded-2xl bg-burgundy py-4 font-medium text-cream disabled:opacity-40 transition-opacity"
+            className="btn-warm w-full rounded-2xl py-4 font-medium text-cream disabled:opacity-40"
           >
             {busy ? "…" : mode === "in" ? "come in" : "begin"}
           </motion.button>
